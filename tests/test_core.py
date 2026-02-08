@@ -105,6 +105,28 @@ class TestWriteScript:
             assert "echo hello" in f.read()
 
 
+class TestPrefix:
+    def test_explicit_prefix(self, default_config):
+        executor = LocalExecutor(default_config)
+        assert executor._prefix == "test"
+
+    def test_random_prefix_when_none(self, tmp_path):
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig(log_directory=str(tmp_path / "logs"))
+        executor = LocalExecutor(config)
+        assert len(executor._prefix) == 5
+        assert executor._prefix.isalnum()
+
+    def test_random_prefix_is_unique(self, tmp_path):
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig(log_directory=str(tmp_path / "logs"))
+        a = LocalExecutor(config)
+        b = LocalExecutor(config)
+        assert a._prefix != b._prefix
+
+
 class TestCancelAll:
     @pytest.mark.asyncio
     async def test_cancel_all(self, default_config):

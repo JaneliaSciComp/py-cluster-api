@@ -51,7 +51,7 @@ class ClusterConfig:
     log_directory: str = "./logs"
     lsf_units: str | None = None
     use_stdin: bool = False
-    job_name_prefix: str = "capi"
+    job_name_prefix: str | None = None
     zombie_timeout_minutes: float = 30.0
     completed_retention_minutes: float = 10.0
     command_timeout: float = 100.0

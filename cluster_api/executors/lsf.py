@@ -207,7 +207,7 @@ class LSFExecutor(Executor):
         self, job_names: list[str] | None = None
     ) -> list[str]:
         """Build bjobs command with JSON output."""
-        prefix = self.config.job_name_prefix
+        prefix = self._prefix
         args = [
             self.status_command,
             "-J", f"{prefix}-*",

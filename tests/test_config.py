@@ -42,7 +42,7 @@ class TestLoadConfig:
         config = load_config()
         assert config.executor == "local"
         assert config.poll_interval == 10.0
-        assert config.job_name_prefix == "capi"
+        assert config.job_name_prefix is None
         assert config.zombie_timeout_minutes == 30.0
         assert config.completed_retention_minutes == 10.0
         assert config.command_timeout == 100.0

@@ -7,6 +7,8 @@ import asyncio
 import logging
 import os
 import re
+import secrets
+import string
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -39,6 +41,13 @@ class Executor(abc.ABC):
         self._jobs: dict[str, JobRecord] = {}
         self._log_dir = Path(config.log_directory).expanduser()
         self._log_dir.mkdir(parents=True, exist_ok=True)
+        if config.job_name_prefix:
+            self._prefix = config.job_name_prefix
+        else:
+            # Generate a random prefix so concurrent users/sessions don't
+            # see each other's jobs when polling by name.
+            alphabet = string.ascii_lowercase + string.digits
+            self._prefix = "".join(secrets.choice(alphabet) for _ in range(5))
 
     # --- Script rendering ---
 
@@ -100,7 +109,7 @@ class Executor(abc.ABC):
         metadata: dict[str, Any] | None = None,
     ) -> JobRecord:
         """Submit a job to the scheduler."""
-        full_name = f"{self.config.job_name_prefix}-{name}"
+        full_name = f"{self._prefix}-{name}"
         script = self.render_script(command, full_name, resources, prologue, epilogue)
         script_path = self._write_script(script, full_name)
 
@@ -132,7 +141,7 @@ class Executor(abc.ABC):
         metadata: dict[str, Any] | None = None,
     ) -> JobRecord:
         """Submit a job array to the scheduler."""
-        full_name = f"{self.config.job_name_prefix}-{name}"
+        full_name = f"{self._prefix}-{name}"
         script = self.render_script(command, full_name, resources, prologue, epilogue)
         script_path = self._write_script(script, full_name)
 
