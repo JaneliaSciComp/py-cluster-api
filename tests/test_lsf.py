@@ -359,3 +359,43 @@ class TestLsfStatusMap:
     def test_all_statuses_mapped(self):
         expected = {"PEND", "RUN", "DONE", "EXIT", "ZOMBI", "USUSP", "PSUSP", "SSUSP"}
         assert expected == set(_LSF_STATUS_MAP.keys())
+
+
+class TestArrayConcurrency:
+    @pytest.mark.asyncio
+    async def test_with_max_concurrent(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <12345> is submitted to queue <normal>.",
+        ) as mock_call:
+            job = await executor.submit_array(
+                command="echo hello",
+                name="batch",
+                array_range=(1, 100),
+                max_concurrent=15,
+            )
+            assert job.job_id == "12345"
+            assert job.metadata["max_concurrent"] == 15
+            stdin = mock_call.call_args.kwargs.get("stdin_data", "")
+            assert "[1-100%15]" in stdin
+
+    @pytest.mark.asyncio
+    async def test_without_max_concurrent(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <12345> is submitted to queue <normal>.",
+        ) as mock_call:
+            job = await executor.submit_array(
+                command="echo hello",
+                name="batch",
+                array_range=(1, 100),
+            )
+            stdin = mock_call.call_args.kwargs.get("stdin_data", "")
+            assert "[1-100]" in stdin
+            j_line = [line for line in stdin.splitlines() if "-J " in line][0]
+            assert "%" not in j_line
+            assert "max_concurrent" not in job.metadata

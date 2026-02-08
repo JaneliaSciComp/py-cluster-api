@@ -167,13 +167,17 @@ class LSFExecutor(Executor):
         name: str,
         array_range: tuple[int, int],
         env: dict[str, str] | None = None,
+        max_concurrent: int | None = None,
     ) -> str:
         """Submit an array job with -J 'name[start-end]'."""
         submit_env = dict(env) if env else {}
         if self.config.suppress_job_email:
             submit_env["LSB_JOB_REPORT_MAIL"] = "N"
 
-        array_name = f"{name}[{array_range[0]}-{array_range[1]}]"
+        array_spec = f"{array_range[0]}-{array_range[1]}"
+        if max_concurrent is not None:
+            array_spec += f"%{max_concurrent}"
+        array_name = f"{name}[{array_spec}]"
 
         # Rewrite script with %I substitution in stdout/stderr paths
         with open(script_path) as f:

@@ -139,6 +139,7 @@ class Executor(abc.ABC):
         epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
         metadata: dict[str, Any] | None = None,
+        max_concurrent: int | None = None,
     ) -> JobRecord:
         """Submit a job array to the scheduler."""
         full_name = f"{self._prefix}-{name}"
@@ -146,8 +147,12 @@ class Executor(abc.ABC):
         script_path = self._write_script(script, full_name)
 
         job_id = await self._submit_array_job(
-            script_path, full_name, array_range, env
+            script_path, full_name, array_range, env, max_concurrent
         )
+
+        meta = {**(metadata or {}), "array_range": array_range}
+        if max_concurrent is not None:
+            meta["max_concurrent"] = max_concurrent
 
         record = JobRecord(
             job_id=job_id,
@@ -156,7 +161,7 @@ class Executor(abc.ABC):
             status=JobStatus.PENDING,
             resources=resources,
             script_path=script_path,
-            metadata={**(metadata or {}), "array_range": array_range},
+            metadata=meta,
             _last_seen=datetime.now(timezone.utc),
         )
         self._jobs[job_id] = record
@@ -187,6 +192,7 @@ class Executor(abc.ABC):
         name: str,
         array_range: tuple[int, int],
         env: dict[str, str] | None = None,
+        max_concurrent: int | None = None,
     ) -> str:
         """Submit an array job. Override in subclasses."""
         return await self._submit_job(script_path, name, env)
