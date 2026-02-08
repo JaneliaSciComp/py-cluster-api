@@ -130,6 +130,26 @@ class TestParseJobStatuses:
         assert meta["exit_code"] == 0
         assert meta["finish_time"] is not None
 
+    def test_done_job_empty_exit_code(self, lsf_config):
+        """LSF returns empty EXIT_CODE for DONE jobs — should infer 0."""
+        executor = LSFExecutor(lsf_config)
+        output = self._make_bjobs_json([
+            {
+                "JOBID": "12348",
+                "STAT": "DONE",
+                "EXIT_CODE": "",
+                "EXEC_HOST": "node02",
+                "MAX_MEM": "1 GB",
+                "SUBMIT_TIME": "Jan  5 10:00:00 2024",
+                "START_TIME": "Jan  5 10:01:00 2024",
+                "FINISH_TIME": "Jan  5 11:00:00 2024",
+            }
+        ])
+        result = executor._parse_job_statuses(output)
+        status, meta = result["12348"]
+        assert status == JobStatus.DONE
+        assert meta["exit_code"] == 0
+
     def test_failed_job(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         output = self._make_bjobs_json([
@@ -304,6 +324,14 @@ class TestParseLsfTime:
         assert dt.month == 1
         assert dt.day == 5
         assert dt.year == 2024
+
+    def test_trailing_timezone(self):
+        """LSF appends a timezone letter like ' L' to timestamps."""
+        dt = _parse_lsf_time("Feb  8 10:31:17 2026 L")
+        assert dt is not None
+        assert dt.month == 2
+        assert dt.day == 8
+        assert dt.year == 2026
 
     def test_dash(self):
         assert _parse_lsf_time("-") is None

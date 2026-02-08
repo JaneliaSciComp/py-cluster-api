@@ -21,6 +21,9 @@ htmlcov/
 # Logs
 logs/
 
+# Local cluster config for integration tests
+tests/cluster_config.yaml
+
 # AI agents
 .claude/
 

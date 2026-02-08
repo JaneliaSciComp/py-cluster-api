@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from datetime import datetime
 from typing import Any
 
@@ -248,6 +249,9 @@ class LSFExecutor(Executor):
                     exit_code = int(exit_code_str)
                 except ValueError:
                     pass
+            # LSF returns "" for exit_code on DONE jobs — infer 0
+            if exit_code is None and status == JobStatus.DONE:
+                exit_code = 0
 
             meta: dict[str, Any] = {
                 "exec_host": _clean_field(rec.get("EXEC_HOST")),
@@ -286,6 +290,8 @@ def _parse_lsf_time(value: Any) -> datetime | None:
     s = _clean_field(value)
     if s is None:
         return None
+    # Strip trailing timezone indicator (e.g. " L" in "Feb  8 10:31:17 2026 L")
+    s = re.sub(r"\s+[A-Z]$", "", s)
     # LSF timestamps are typically like "Jan  1 12:00:00 2024"
     for fmt in ("%b %d %H:%M:%S %Y", "%b  %d %H:%M:%S %Y", "%Y/%m/%d-%H:%M:%S"):
         try:

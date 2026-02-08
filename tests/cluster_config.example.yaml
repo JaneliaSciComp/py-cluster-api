@@ -1,0 +1,17 @@
+# Example cluster config for integration tests.
+# Copy this file to tests/cluster_config.yaml and adjust for your cluster.
+# cluster_config.yaml is gitignored — it will not be committed.
+
+queue: normal
+memory: "1 GB"
+use_stdin: true
+lsf_units: KB
+suppress_job_email: true
+
+# Optional: prologue commands to run before each job
+# script_prologue:
+#   - "module load java/11"
+
+# Optional: extra #BSUB directives added to every job script
+# extra_directives:
+#   - "#BSUB -env 'all'"

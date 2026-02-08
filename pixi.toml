@@ -16,6 +16,7 @@ test-cov = "pytest tests/ --cov=cluster_api --cov-report=term-missing"
 lint = "ruff check cluster_api/ tests/"
 fmt = "ruff format cluster_api/ tests/"
 check = { depends-on = ["lint", "test"] }
+test-integration = "pytest tests/ -m integration -v -s"
 
 [feature.test.dependencies]
 pytest = "*"

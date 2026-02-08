@@ -10,3 +10,5 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = ["integration: tests that submit real jobs to the cluster (deselected by default)"]
+addopts = "-m 'not integration'"

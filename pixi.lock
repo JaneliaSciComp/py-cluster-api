@@ -105,7 +105,7 @@ packages:
 - pypi: ./
   name: cluster-api
   version: 0.1.0
-  sha256: c197aa971879a5764590daf8fa8644ee11d3377e44b8d2093ec709202d1899db
+  sha256: dea85a9688d6472620ec78d435b141dd145d14cd232117d020402fb5089b12ff
   requires_dist:
   - pyyaml
   requires_python: '>=3.10'
