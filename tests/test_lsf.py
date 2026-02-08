@@ -29,9 +29,12 @@ class TestLsfFormatBytesCeil:
     def test_kilobytes(self):
         assert lsf_format_bytes_ceil(1024 * 1024, "KB") == "1024"
 
+    def test_terabytes(self):
+        assert lsf_format_bytes_ceil(2 * 1024**4, "TB") == "2"
+
     def test_invalid_units(self):
         with pytest.raises(ValueError):
-            lsf_format_bytes_ceil(1024, "TB")
+            lsf_format_bytes_ceil(1024, "PB")
 
 
 class TestBuildHeader:
@@ -242,7 +245,7 @@ class TestBuildStatusArgs:
 
 
 class TestSubmission:
-    @pytest.mark.asyncio
+
     async def test_submit_stdin(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         with patch.object(
@@ -261,7 +264,7 @@ class TestSubmission:
             call_args = mock_call.call_args
             assert call_args.kwargs.get("stdin_data") is not None
 
-    @pytest.mark.asyncio
+
     async def test_submit_email_suppression(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         with patch.object(
@@ -275,7 +278,7 @@ class TestSubmission:
             assert env is not None
             assert env.get("LSB_JOB_REPORT_MAIL") == "N"
 
-    @pytest.mark.asyncio
+
     async def test_submit_array(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         with patch.object(
@@ -297,7 +300,7 @@ class TestSubmission:
 
 
 class TestArrayScriptRewriting:
-    @pytest.mark.asyncio
+
     async def test_percent_i_substitution(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         with patch.object(
@@ -316,7 +319,7 @@ class TestArrayScriptRewriting:
 
 
 class TestCancelByName:
-    @pytest.mark.asyncio
+
     async def test_cancel_by_name(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         with patch.object(
@@ -362,7 +365,7 @@ class TestLsfStatusMap:
 
 
 class TestArrayConcurrency:
-    @pytest.mark.asyncio
+
     async def test_with_max_concurrent(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         with patch.object(
@@ -381,7 +384,7 @@ class TestArrayConcurrency:
             stdin = mock_call.call_args.kwargs.get("stdin_data", "")
             assert "[1-100%15]" in stdin
 
-    @pytest.mark.asyncio
+
     async def test_without_max_concurrent(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         with patch.object(

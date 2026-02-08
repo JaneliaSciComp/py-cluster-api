@@ -139,8 +139,12 @@ class TestLoadConfig:
         assert config.script_prologue == ["module load java/11", "export FOO=bar"]
         assert config.script_epilogue == ["echo done"]
 
-    def test_missing_file(self):
-        config = load_config(path="/nonexistent/config.yaml")
+    def test_missing_file_raises(self):
+        with pytest.raises(FileNotFoundError, match="Config file not found"):
+            load_config(path="/nonexistent/config.yaml")
+
+    def test_no_path_returns_defaults(self):
+        config = load_config()
         assert config.executor == "local"
 
     def test_env_var_config(self, tmp_path, monkeypatch):

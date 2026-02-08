@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from cluster_api._types import JobStatus
 from cluster_api.executors.local import LocalExecutor
 
 
 class TestLocalSubmitAndPoll:
-    @pytest.mark.asyncio
+
     async def test_submit_and_poll_success(self, default_config):
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="echo hello", name="echo-test")
@@ -25,7 +23,7 @@ class TestLocalSubmitAndPoll:
         assert job.status == JobStatus.DONE
         assert job.exit_code == 0
 
-    @pytest.mark.asyncio
+
     async def test_submit_and_poll_failure(self, default_config):
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="exit 1", name="fail-test")
@@ -37,7 +35,7 @@ class TestLocalSubmitAndPoll:
         assert job.status == JobStatus.FAILED
         assert job.exit_code == 1
 
-    @pytest.mark.asyncio
+
     async def test_running_job(self, default_config):
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="sleep 10", name="sleep-test")
@@ -50,7 +48,7 @@ class TestLocalSubmitAndPoll:
         # Cleanup
         await executor.cancel(job.job_id)
 
-    @pytest.mark.asyncio
+
     async def test_cancel(self, default_config):
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="sleep 60", name="cancel-test")
@@ -59,7 +57,7 @@ class TestLocalSubmitAndPoll:
         await executor.cancel(job.job_id)
         assert job.status == JobStatus.KILLED
 
-    @pytest.mark.asyncio
+
     async def test_multiple_jobs(self, default_config):
         executor = LocalExecutor(default_config)
         job1 = await executor.submit(command="echo one", name="job1")
@@ -76,7 +74,7 @@ class TestLocalSubmitAndPoll:
         assert job1.status == JobStatus.DONE
         assert job2.status == JobStatus.DONE
 
-    @pytest.mark.asyncio
+
     async def test_jobs_property(self, default_config):
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="echo hello", name="prop-test")
@@ -92,7 +90,7 @@ class TestLocalSubmitAndPoll:
 
 
 class TestLocalCallback:
-    @pytest.mark.asyncio
+
     async def test_callback_fires_on_success(self, default_config):
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="echo hello", name="cb-test")
@@ -113,7 +111,7 @@ class TestLocalCallback:
         assert len(results) == 1
         assert results[0] == ("success", job.job_id)
 
-    @pytest.mark.asyncio
+
     async def test_callback_fires_on_failure(self, default_config):
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="exit 42", name="fail-cb-test")

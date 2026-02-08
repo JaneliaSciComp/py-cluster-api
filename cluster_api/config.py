@@ -80,13 +80,6 @@ def _find_config_path() -> Path | None:
     return None
 
 
-def _merge_dicts(base: dict, override: dict) -> dict:
-    """Shallow merge of override into base."""
-    result = dict(base)
-    result.update(override)
-    return result
-
-
 def load_config(
     path: str | Path | None = None,
     profile: str | None = None,
@@ -95,21 +88,30 @@ def load_config(
     """Load configuration from YAML with optional profile and overrides.
 
     Merges: base config → profile → overrides.
+
+    Raises FileNotFoundError if an explicit path is given but doesn't exist.
     """
     raw: dict[str, Any] = {}
 
-    config_path = Path(path) if path else _find_config_path()
-    if config_path and config_path.exists():
+    if path is not None:
+        config_path = Path(path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
         with open(config_path) as f:
             raw = yaml.safe_load(f) or {}
+    else:
+        config_path = _find_config_path()
+        if config_path and config_path.exists():
+            with open(config_path) as f:
+                raw = yaml.safe_load(f) or {}
 
     profiles = raw.pop("profiles", {})
 
     if profile and profile in profiles:
-        raw = _merge_dicts(raw, profiles[profile])
+        raw = {**raw, **profiles[profile]}
 
     if overrides:
-        raw = _merge_dicts(raw, overrides)
+        raw = {**raw, **overrides}
 
     # Build ClusterConfig from the merged dict, ignoring unknown keys
     known_fields = {f.name for f in ClusterConfig.__dataclass_fields__.values()}

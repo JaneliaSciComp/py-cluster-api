@@ -13,7 +13,7 @@ from cluster_api.monitor import JobMonitor
 
 
 class TestMonitorPollLoop:
-    @pytest.mark.asyncio
+
     async def test_monitor_fires_callback(self, default_config):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.2)
@@ -33,7 +33,7 @@ class TestMonitorPollLoop:
         assert len(results) == 1
         assert results[0] == job.job_id
 
-    @pytest.mark.asyncio
+
     async def test_wait_for_timeout(self, default_config):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.2)
@@ -48,7 +48,7 @@ class TestMonitorPollLoop:
             await monitor.stop()
             await executor.cancel(job.job_id)
 
-    @pytest.mark.asyncio
+
     async def test_async_callback(self, default_config):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.2)
@@ -71,7 +71,7 @@ class TestMonitorPollLoop:
 
         assert len(results) == 1
 
-    @pytest.mark.asyncio
+
     async def test_multiple_jobs(self, default_config):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.2)
@@ -93,7 +93,7 @@ class TestMonitorPollLoop:
 
 
 class TestZombieDetection:
-    @pytest.mark.asyncio
+
     async def test_zombie_detected(self, default_config):
         # Set very short zombie timeout
         default_config.zombie_timeout_minutes = 0.001  # ~0.06 seconds
@@ -117,7 +117,7 @@ class TestZombieDetection:
 
 
 class TestPurgeCompleted:
-    @pytest.mark.asyncio
+
     async def test_purge_old_completed(self, default_config):
         default_config.completed_retention_minutes = 0.001
         executor = LocalExecutor(default_config)
@@ -136,7 +136,7 @@ class TestPurgeCompleted:
 
         assert "old-1" not in executor._jobs
 
-    @pytest.mark.asyncio
+
     async def test_no_purge_with_callbacks(self, default_config):
         default_config.completed_retention_minutes = 0.001
         executor = LocalExecutor(default_config)
@@ -157,7 +157,7 @@ class TestPurgeCompleted:
         # Should NOT be purged because it still has callbacks
         assert "cb-1" in executor._jobs
 
-    @pytest.mark.asyncio
+
     async def test_no_purge_recent(self, default_config):
         default_config.completed_retention_minutes = 60.0
         executor = LocalExecutor(default_config)
@@ -178,7 +178,7 @@ class TestPurgeCompleted:
 
 
 class TestExitConditionCallback:
-    @pytest.mark.asyncio
+
     async def test_any_condition(self, default_config):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.1)
@@ -195,7 +195,7 @@ class TestExitConditionCallback:
         await monitor._dispatch_callbacks(record)
         assert results == ["any"]
 
-    @pytest.mark.asyncio
+
     async def test_killed_condition(self, default_config):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.1)
@@ -213,7 +213,7 @@ class TestExitConditionCallback:
         await monitor._dispatch_callbacks(record)
         assert results == ["killed"]
 
-    @pytest.mark.asyncio
+
     async def test_callbacks_cleared_after_dispatch(self, default_config):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.1)

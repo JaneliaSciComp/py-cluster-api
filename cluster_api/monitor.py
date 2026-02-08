@@ -24,6 +24,7 @@ class JobMonitor:
         self.poll_interval = poll_interval or executor.config.poll_interval
         self._task: asyncio.Task | None = None
         self._stopped = asyncio.Event()
+        self._completion_events: dict[str, asyncio.Event] = {}
 
     async def start(self) -> None:
         """Start the polling loop."""
@@ -49,6 +50,7 @@ class JobMonitor:
                 await self.executor.poll()
                 await self._dispatch_all_callbacks()
                 await self._check_zombies()
+                self._notify_waiters()
                 await self._purge_completed()
             except Exception:
                 logger.exception("Error in poll loop")
@@ -61,7 +63,7 @@ class JobMonitor:
 
     async def _dispatch_all_callbacks(self) -> None:
         """Check all jobs for pending callbacks."""
-        for record in list(self.executor._jobs.values()):
+        for record in list(self.executor.jobs.values()):
             if record.is_terminal and record._callbacks:
                 await self._dispatch_callbacks(record)
 
@@ -96,7 +98,7 @@ class JobMonitor:
         timeout_minutes = self.executor.config.zombie_timeout_minutes
         now = datetime.now(timezone.utc)
 
-        for record in self.executor._jobs.values():
+        for record in self.executor.jobs.values():
             if record.is_terminal:
                 continue
             if record._last_seen is None:
@@ -116,7 +118,7 @@ class JobMonitor:
         now = datetime.now(timezone.utc)
 
         to_remove = []
-        for job_id, record in self.executor._jobs.items():
+        for job_id, record in self.executor.jobs.items():
             if not record.is_terminal:
                 continue
             if not record._callbacks:
@@ -128,18 +130,37 @@ class JobMonitor:
                         to_remove.append(job_id)
 
         for job_id in to_remove:
-            del self.executor._jobs[job_id]
+            self.executor.remove_job(job_id)
             logger.debug("Purged completed job %s", job_id)
+
+    def _notify_waiters(self) -> None:
+        """Set completion events for terminal jobs that have waiters."""
+        done = []
+        for job_id, event in self._completion_events.items():
+            record = self.executor.jobs.get(job_id)
+            if record is not None and record.is_terminal:
+                event.set()
+                done.append(job_id)
+        for job_id in done:
+            del self._completion_events[job_id]
 
     async def wait_for(
         self, *records: JobRecord, timeout: float | None = None
     ) -> None:
         """Wait until all given jobs reach a terminal state."""
+        events = []
+        for r in records:
+            if r.is_terminal:
+                continue
+            if r.job_id not in self._completion_events:
+                self._completion_events[r.job_id] = asyncio.Event()
+            events.append(self._completion_events[r.job_id])
+
+        if not events:
+            return
+
         async def _wait() -> None:
-            while True:
-                if all(r.is_terminal for r in records):
-                    return
-                await asyncio.sleep(0.5)
+            await asyncio.gather(*(e.wait() for e in events))
 
         if timeout is not None:
             await asyncio.wait_for(_wait(), timeout=timeout)

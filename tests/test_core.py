@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from cluster_api._types import JobStatus
+from cluster_api.exceptions import CommandFailedError, CommandTimeoutError, SubmitError
 from cluster_api.executors.local import LocalExecutor
 
 
@@ -67,27 +68,27 @@ class TestJobIdFromSubmitOutput:
 
     def test_no_match_raises(self, default_config):
         executor = LocalExecutor(default_config)
-        with pytest.raises(RuntimeError, match="Could not parse job ID"):
+        with pytest.raises(SubmitError, match="Could not parse job ID"):
             executor._job_id_from_submit_output("no numbers here")
 
 
 class TestCallTimeout:
-    @pytest.mark.asyncio
+
     async def test_timeout(self):
-        with pytest.raises(RuntimeError, match="timed out"):
+        with pytest.raises(CommandTimeoutError, match="timed out"):
             await LocalExecutor._call(["sleep", "10"], timeout=0.5)
 
-    @pytest.mark.asyncio
+
     async def test_successful_call(self):
         result = await LocalExecutor._call(["echo", "hello"])
         assert result == "hello"
 
-    @pytest.mark.asyncio
+
     async def test_failed_command(self):
-        with pytest.raises(RuntimeError, match="Command failed"):
+        with pytest.raises(CommandFailedError, match="Command failed"):
             await LocalExecutor._call(["false"])
 
-    @pytest.mark.asyncio
+
     async def test_env_passing(self):
         result = await LocalExecutor._call(
             ["bash", "-c", "echo $MY_TEST_VAR"],
@@ -128,7 +129,7 @@ class TestPrefix:
 
 
 class TestCancelAll:
-    @pytest.mark.asyncio
+
     async def test_cancel_all(self, default_config):
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="sleep 60", name="sleeper")

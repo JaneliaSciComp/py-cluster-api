@@ -7,6 +7,12 @@ from typing import Any
 from ._types import JobExitCondition, JobRecord, JobStatus, ResourceSpec
 from .config import ClusterConfig, load_config
 from .core import Executor
+from .exceptions import (
+    ClusterAPIError,
+    CommandFailedError,
+    CommandTimeoutError,
+    SubmitError,
+)
 from .executors import get_executor_class
 from .executors.local import LocalExecutor
 from .executors.lsf import LSFExecutor
@@ -24,6 +30,10 @@ __all__ = [
     "ClusterConfig",
     "JobMonitor",
     "load_config",
+    "ClusterAPIError",
+    "CommandFailedError",
+    "CommandTimeoutError",
+    "SubmitError",
 ]
 
 

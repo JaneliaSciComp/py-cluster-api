@@ -13,6 +13,7 @@ from typing import Any
 from .._types import JobStatus, ResourceSpec
 from ..config import ClusterConfig, parse_memory_bytes
 from ..core import Executor
+from ..exceptions import ClusterAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def lsf_format_bytes_ceil(n_bytes: int, lsf_units: str = "MB") -> str:
 
     Inspired by dask-jobqueue's lsf_format_bytes_ceil.
     """
-    units = {"KB": 1024, "MB": 1024**2, "GB": 1024**3}
+    units = {"KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
     if lsf_units not in units:
         raise ValueError(f"Unknown LSF units: {lsf_units}")
     return str(math.ceil(n_bytes / units[lsf_units]))
@@ -60,7 +61,7 @@ async def lsf_detect_units(
         for line in out.splitlines():
             if "LSF_UNIT_FOR_LIMITS" in line:
                 return line.split("=")[-1].strip().upper()
-    except RuntimeError:
+    except (ClusterAPIError, OSError):
         pass
     return "KB"  # LSF default
 
@@ -133,6 +134,34 @@ class LSFExecutor(Executor):
 
         return lines
 
+    def _build_submit_env(self, env: dict[str, str] | None) -> dict[str, str] | None:
+        """Build environment dict for bsub, applying email suppression."""
+        submit_env = dict(env) if env else {}
+        if self.config.suppress_job_email:
+            submit_env["LSB_JOB_REPORT_MAIL"] = "N"
+        return submit_env or None
+
+    async def _bsub(
+        self, script_path: str, content: str | None, env: dict[str, str] | None,
+    ) -> str:
+        """Run bsub via stdin or file and return raw output."""
+        submit_env = self._build_submit_env(env)
+        if self.config.use_stdin:
+            if content is None:
+                with open(script_path) as f:
+                    content = f.read()
+            return await self._call(
+                [self.submit_command],
+                env=submit_env,
+                timeout=self.config.command_timeout,
+                stdin_data=content,
+            )
+        return await self._call(
+            [self.submit_command, script_path],
+            env=submit_env,
+            timeout=self.config.command_timeout,
+        )
+
     async def _submit_job(
         self,
         script_path: str,
@@ -140,25 +169,7 @@ class LSFExecutor(Executor):
         env: dict[str, str] | None = None,
     ) -> str:
         """Submit via bsub with stdin mode support."""
-        submit_env = dict(env) if env else {}
-        if self.config.suppress_job_email:
-            submit_env["LSB_JOB_REPORT_MAIL"] = "N"
-
-        if self.config.use_stdin:
-            with open(script_path) as f:
-                script_content = f.read()
-            out = await self._call(
-                [self.submit_command],
-                env=submit_env or None,
-                timeout=self.config.command_timeout,
-                stdin_data=script_content,
-            )
-        else:
-            out = await self._call(
-                [self.submit_command, script_path],
-                env=submit_env or None,
-                timeout=self.config.command_timeout,
-            )
+        out = await self._bsub(script_path, None, env)
         return self._job_id_from_submit_output(out)
 
     async def _submit_array_job(
@@ -170,42 +181,26 @@ class LSFExecutor(Executor):
         max_concurrent: int | None = None,
     ) -> str:
         """Submit an array job with -J 'name[start-end]'."""
-        submit_env = dict(env) if env else {}
-        if self.config.suppress_job_email:
-            submit_env["LSB_JOB_REPORT_MAIL"] = "N"
-
         array_spec = f"{array_range[0]}-{array_range[1]}"
         if max_concurrent is not None:
             array_spec += f"%{max_concurrent}"
         array_name = f"{name}[{array_spec}]"
 
-        # Rewrite script with %I substitution in stdout/stderr paths
+        # Rewrite only #BSUB directive lines for array syntax
         with open(script_path) as f:
-            content = f.read()
-        # Replace the job name directive to use array syntax
-        content = content.replace(
-            f"{self.directive_prefix} -J {name}",
-            f"{self.directive_prefix} -J {array_name}",
-        )
-        # Add %I to output paths for per-element logs
-        content = content.replace(f"{name}.out", f"{name}.%I.out")
-        content = content.replace(f"{name}.err", f"{name}.%I.err")
+            lines = f.readlines()
+        new_lines = []
+        for line in lines:
+            if line.startswith(self.directive_prefix):
+                line = line.replace(f"-J {name}", f"-J {array_name}")
+                line = line.replace(f"{name}.out", f"{name}.%I.out")
+                line = line.replace(f"{name}.err", f"{name}.%I.err")
+            new_lines.append(line)
+        content = "".join(new_lines)
         with open(script_path, "w") as f:
             f.write(content)
 
-        if self.config.use_stdin:
-            out = await self._call(
-                [self.submit_command],
-                env=submit_env or None,
-                timeout=self.config.command_timeout,
-                stdin_data=content,
-            )
-        else:
-            out = await self._call(
-                [self.submit_command, script_path],
-                env=submit_env or None,
-                timeout=self.config.command_timeout,
-            )
+        out = await self._bsub(script_path, content, env)
         return self._job_id_from_submit_output(out)
 
     def _build_status_args(self) -> list[str]:

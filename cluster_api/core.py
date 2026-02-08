@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import ClusterConfig
+from .exceptions import ClusterAPIError, CommandFailedError, CommandTimeoutError, SubmitError
 from ._types import JobRecord, JobStatus, ResourceSpec
 
 logger = logging.getLogger(__name__)
@@ -209,7 +210,7 @@ class Executor(abc.ABC):
         """Extract job ID from submission output using regex."""
         match = re.search(self.job_id_regexp, out)
         if not match:
-            raise RuntimeError(
+            raise SubmitError(
                 f"Could not parse job ID from output: {out!r}"
             )
         return match.group("job_id")
@@ -232,9 +233,8 @@ class Executor(abc.ABC):
 
     async def cancel_all(self) -> None:
         """Cancel all tracked jobs."""
-        for job_id, record in self._jobs.items():
-            if not record.is_terminal:
-                await self.cancel(job_id)
+        to_cancel = [jid for jid, r in self._jobs.items() if not r.is_terminal]
+        await asyncio.gather(*(self.cancel(jid) for jid in to_cancel))
 
     # --- Status polling ---
 
@@ -259,7 +259,7 @@ class Executor(abc.ABC):
         args = self._build_status_args()
         try:
             out = await self._call(args, timeout=self.config.command_timeout)
-        except RuntimeError:
+        except (ClusterAPIError, OSError):
             logger.warning("Status query failed, skipping poll cycle")
             return {jid: r.status for jid, r in self._jobs.items()}
 
@@ -322,7 +322,7 @@ class Executor(abc.ABC):
             )
         except asyncio.TimeoutError:
             proc.kill()
-            raise RuntimeError(
+            raise CommandTimeoutError(
                 f"Command timed out after {timeout}s: {cmd}"
             )
 
@@ -330,13 +330,17 @@ class Executor(abc.ABC):
         err = stderr.decode().strip()
 
         if proc.returncode != 0:
-            raise RuntimeError(
+            raise CommandFailedError(
                 f"Command failed (exit {proc.returncode}): {cmd}\nstderr: {err}"
             )
 
         return out
 
     # --- Properties ---
+
+    def remove_job(self, job_id: str) -> None:
+        """Remove a job from tracking."""
+        self._jobs.pop(job_id, None)
 
     @property
     def jobs(self) -> dict[str, JobRecord]:
