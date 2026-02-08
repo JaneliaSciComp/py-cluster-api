@@ -1,8 +1,36 @@
 [project]
 name = "cluster-api"
 version = "0.1.0"
+description = "Generic Python library for running jobs on HPC clusters"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Konrad Rokicki", email = "rokicki@janelia.hhmi.org" }
+]
+classifiers = [
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 requires-python = ">=3.10"
 dependencies = ["pyyaml"]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+]
+release = [
+    "build",
+    "twine",
+]
+
+[project.urls]
+Homepage = "https://github.com/JaneliaSciComp/py-cluster-api"
+Repository = "https://github.com/JaneliaSciComp/py-cluster-api"
 
 [build-system]
 requires = ["hatchling"]
@@ -12,3 +40,42 @@ build-backend = "hatchling.build"
 asyncio_mode = "auto"
 markers = ["integration: tests that submit real jobs to the cluster (deselected by default)"]
 addopts = "-m 'not integration'"
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.dependencies]
+python = ">=3.10"
+
+[tool.pixi.pypi-dependencies]
+cluster-api = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+test = "pytest tests/"
+test-v = "pytest tests/ -v"
+test-cov = "pytest tests/ --cov=cluster_api --cov-report=term-missing"
+lint = "ruff check cluster_api/ tests/"
+fmt = "ruff format cluster_api/ tests/"
+check = { depends-on = ["lint", "test"] }
+test-integration = "pytest tests/ -m integration -v -s"
+
+[tool.pixi.feature.test.dependencies]
+pytest = "*"
+pytest-asyncio = "*"
+pytest-cov = "*"
+
+[tool.pixi.feature.dev.dependencies]
+ruff = "*"
+
+[tool.pixi.feature.release.dependencies]
+python-build = "*"
+twine = "*"
+
+[tool.pixi.feature.release.tasks]
+pypi-build = "python -m build"
+pypi-upload = "twine upload dist/*"
+
+[tool.pixi.environments]
+default = { features = ["test", "dev"], solve-group = "default" }
+release = { features = ["release"], solve-group = "default" }
