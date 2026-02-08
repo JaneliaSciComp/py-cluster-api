@@ -1,5 +1,7 @@
 # py-cluster-api
 
+[![CI](https://github.com/JaneliaSciComp/py-cluster-api/actions/workflows/ci.yml/badge.svg)](https://github.com/JaneliaSciComp/py-cluster-api/actions/workflows/ci.yml)
+
 A Python library for submitting and monitoring jobs on HPC clusters. Supports running arbitrary executables (Nextflow pipelines, Python scripts, Java tools, etc.) on LSF clusters and taking action when jobs complete via async callbacks.
 
 ## Features
