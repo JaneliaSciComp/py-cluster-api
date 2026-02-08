@@ -20,13 +20,13 @@ A Python library for submitting and monitoring jobs on HPC clusters. Supports ru
 Requires Python 3.10+.
 
 ```bash
-pixi install
+pip install py-cluster-api
 ```
 
-Or install the package directly:
+Or with [Pixi](https://pixi.sh/):
 
 ```bash
-pip install -e .
+pixi add --pypi py-cluster-api
 ```
 
 ## Quick Start

@@ -284,19 +284,6 @@ packages:
   - pkg:pypi/charset-normalizer?source=hash-mapping
   size: 50965
   timestamp: 1760437331772
-- pypi: ./
-  name: cluster-api
-  version: 0.1.0
-  sha256: 6a4533202608d1cdfee165ba57944c9001508abcd8d5a2f8ece65d5b5e0d0bd0
-  requires_dist:
-  - pyyaml
-  - pytest ; extra == 'test'
-  - pytest-asyncio ; extra == 'test'
-  - pytest-cov ; extra == 'test'
-  - build ; extra == 'release'
-  - twine ; extra == 'release'
-  requires_python: '>=3.10'
-  editable: true
 - conda: https://conda.anaconda.org/conda-forge/linux-64/cmarkgfm-2024.11.20-py314h5bd0f2a_1.conda
   sha256: c2420839a943580dece9c5857492d69732df2af6dac6cb8fd8dd92c20060beae
   md5: 23985f6de5f68e3465807e1fbbc98f30
@@ -852,6 +839,19 @@ packages:
   - pkg:pypi/pluggy?source=compressed-mapping
   size: 25877
   timestamp: 1764896838868
+- pypi: ./
+  name: py-cluster-api
+  version: 0.1.0
+  sha256: 83675f0c7165b356245b5516e767fd170ba79bf876661fcd642b431f7d591306
+  requires_dist:
+  - pyyaml
+  - pytest ; extra == 'test'
+  - pytest-asyncio ; extra == 'test'
+  - pytest-cov ; extra == 'test'
+  - build ; extra == 'release'
+  - twine ; extra == 'release'
+  requires_python: '>=3.10'
+  editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/pycparser-2.22-pyh29332c3_1.conda
   sha256: 79db7928d13fab2d892592223d7570f5061c192f27b9febd1a418427b719acc6
   md5: 12c566707c80111f9799308d9e265aef
