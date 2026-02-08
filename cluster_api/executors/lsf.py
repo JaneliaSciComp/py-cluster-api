@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import math
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .._types import JobStatus, ResourceSpec
@@ -137,7 +138,6 @@ class LSFExecutor(Executor):
         script_path: str,
         name: str,
         env: dict[str, str] | None = None,
-        input_path: str | None = None,
     ) -> str:
         """Submit via bsub with stdin mode support."""
         submit_env = dict(env) if env else {}
@@ -208,9 +208,7 @@ class LSFExecutor(Executor):
             )
         return self._job_id_from_submit_output(out)
 
-    def _build_status_args(
-        self, job_names: list[str] | None = None
-    ) -> list[str]:
+    def _build_status_args(self) -> list[str]:
         """Build bjobs command with JSON output."""
         prefix = self._prefix
         args = [
@@ -276,6 +274,10 @@ class LSFExecutor(Executor):
             [self.cancel_command, "-J", name_pattern],
             timeout=self.config.command_timeout,
         )
+        # Update in-memory state for matching jobs
+        for record in self._jobs.values():
+            if not record.is_terminal and fnmatch.fnmatch(record.name, name_pattern):
+                record.status = JobStatus.KILLED
         logger.info("Cancelled jobs matching %s", name_pattern)
 
 
@@ -299,7 +301,7 @@ def _parse_lsf_time(value: Any) -> datetime | None:
     # LSF timestamps are typically like "Jan  1 12:00:00 2024"
     for fmt in ("%b %d %H:%M:%S %Y", "%b  %d %H:%M:%S %Y", "%Y/%m/%d-%H:%M:%S"):
         try:
-            return datetime.strptime(s, fmt)
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
         except ValueError:
             continue
     return None

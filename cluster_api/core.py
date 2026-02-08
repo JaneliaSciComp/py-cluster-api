@@ -39,6 +39,7 @@ class Executor(abc.ABC):
     def __init__(self, config: ClusterConfig) -> None:
         self.config = config
         self._jobs: dict[str, JobRecord] = {}
+        self._script_counter = 0
         self._log_dir = Path(config.log_directory).expanduser()
         self._log_dir.mkdir(parents=True, exist_ok=True)
         if config.job_name_prefix:
@@ -105,7 +106,6 @@ class Executor(abc.ABC):
         prologue: list[str] | None = None,
         epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
-        input_path: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> JobRecord:
         """Submit a job to the scheduler."""
@@ -113,7 +113,7 @@ class Executor(abc.ABC):
         script = self.render_script(command, full_name, resources, prologue, epilogue)
         script_path = self._write_script(script, full_name)
 
-        job_id = await self._submit_job(script_path, full_name, env, input_path)
+        job_id = await self._submit_job(script_path, full_name, env)
 
         record = JobRecord(
             job_id=job_id,
@@ -176,7 +176,6 @@ class Executor(abc.ABC):
         script_path: str,
         name: str,
         env: dict[str, str] | None = None,
-        input_path: str | None = None,
     ) -> str:
         """Submit a script and return the job ID. Override for stdin submission."""
         out = await self._call(
@@ -200,7 +199,8 @@ class Executor(abc.ABC):
     def _write_script(self, script_content: str, name: str) -> str:
         """Write job script to log directory and return its path."""
         safe_name = re.sub(r"[^\w\-.]", "_", name)
-        script_path = self._log_dir / f"{safe_name}.sh"
+        self._script_counter += 1
+        script_path = self._log_dir / f"{safe_name}.{self._script_counter}.sh"
         script_path.write_text(script_content)
         script_path.chmod(0o755)
         return str(script_path)
@@ -239,7 +239,7 @@ class Executor(abc.ABC):
     # --- Status polling ---
 
     @abc.abstractmethod
-    def _build_status_args(self, job_names: list[str] | None = None) -> list[str]:
+    def _build_status_args(self) -> list[str]:
         """Build args for the status query command."""
         ...
 
@@ -252,11 +252,11 @@ class Executor(abc.ABC):
 
     async def poll(self) -> dict[str, JobStatus]:
         """Query scheduler, update job records, detect zombies. Returns current statuses."""
-        active_names = [r.name for r in self._jobs.values() if not r.is_terminal]
-        if not active_names:
+        active = [r for r in self._jobs.values() if not r.is_terminal]
+        if not active:
             return {jid: r.status for jid, r in self._jobs.items()}
 
-        args = self._build_status_args(active_names)
+        args = self._build_status_args()
         try:
             out = await self._call(args, timeout=self.config.command_timeout)
         except RuntimeError:

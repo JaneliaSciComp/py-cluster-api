@@ -39,7 +39,6 @@ class LocalExecutor(Executor):
         script_path: str,
         name: str,
         env: dict[str, str] | None = None,
-        input_path: str | None = None,
     ) -> str:
         """Run script as a background subprocess."""
         full_env = {**os.environ, **(env or {})}
@@ -56,9 +55,7 @@ class LocalExecutor(Executor):
         self._processes[job_id] = proc
         return job_id
 
-    def _build_status_args(
-        self, job_names: list[str] | None = None
-    ) -> list[str]:
+    def _build_status_args(self) -> list[str]:
         # Not used for local executor; poll() is overridden
         return []
 

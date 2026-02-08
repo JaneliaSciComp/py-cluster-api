@@ -233,7 +233,7 @@ class TestParseJobStatuses:
 class TestBuildStatusArgs:
     def test_status_args(self, lsf_config):
         executor = LSFExecutor(lsf_config)
-        args = executor._build_status_args(["test-job1"])
+        args = executor._build_status_args()
         assert "bjobs" in args
         assert "-J" in args
         assert "-a" in args
