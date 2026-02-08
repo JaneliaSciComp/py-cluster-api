@@ -28,6 +28,18 @@ Run with coverage report:
 pixi run test-cov
 ```
 
+Lint:
+
+```bash
+pixi run lint
+```
+
+Format:
+
+```bash
+pixi run fmt
+```
+
 Lint and test together:
 
 ```bash

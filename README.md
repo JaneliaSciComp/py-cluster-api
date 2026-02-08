@@ -187,39 +187,4 @@ Resource requirements: `cpus`, `memory`, `walltime`, `queue`, `account`, `work_d
 
 ## Development
 
-```bash
-pixi install
-
-# Run tests
-pixi run test
-
-# Run tests with verbose output
-pixi run test-v
-
-# Run tests with coverage
-pixi run test-cov
-
-# Lint
-pixi run lint
-
-# Format
-pixi run fmt
-
-# Lint + test
-pixi run check
-```
-
-## Architecture
-
-```
-cluster_api/
-├── __init__.py          # Public API + create_executor() factory
-├── _types.py            # JobStatus, JobExitCondition, ResourceSpec, JobRecord
-├── config.py            # YAML config loader with profiles
-├── core.py              # Abstract Executor base class
-├── monitor.py           # Async polling loop + callback dispatch
-└── executors/
-    ├── __init__.py      # Executor registry
-    ├── lsf.py           # LSFExecutor (bsub/bjobs/bkill)
-    └── local.py         # LocalExecutor (subprocess, for testing)
-```
+See [docs/Development.md](docs/Development.md) for build instructions, testing, and release process.
