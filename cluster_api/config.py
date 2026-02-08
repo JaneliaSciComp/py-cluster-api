@@ -49,7 +49,7 @@ class ClusterConfig:
     extra_directives: list[str] = field(default_factory=list)
     directives_skip: list[str] = field(default_factory=list)
     log_directory: str = "./logs"
-    lsf_units: str | None = None
+    lsf_units: str = "MB"
     use_stdin: bool = False
     job_name_prefix: str | None = None
     zombie_timeout_minutes: float = 30.0

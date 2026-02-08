@@ -17,7 +17,7 @@ Edit `tests/cluster_config.yaml` with your cluster-specific settings:
 queue: normal
 memory: "1 GB"
 use_stdin: true
-lsf_units: KB
+lsf_units: MB
 suppress_job_email: true
 
 # Shell commands to run before each job's command

@@ -75,7 +75,7 @@ class LSFExecutor(Executor):
 
     def __init__(self, config: ClusterConfig) -> None:
         super().__init__(config)
-        self._lsf_units = config.lsf_units or "KB"
+        self._lsf_units = config.lsf_units
 
     def build_header(
         self, name: str, resources: ResourceSpec | None = None

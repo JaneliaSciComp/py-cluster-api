@@ -141,7 +141,7 @@ profiles:
 | `extra_directives` | `[]` | Additional scheduler directives |
 | `directives_skip` | `[]` | Substrings to filter out of directives |
 | `use_stdin` | `false` | Submit via stdin (`bsub < script.sh`) |
-| `lsf_units` | `None` | LSF memory units (`KB`, `MB`, `GB`) |
+| `lsf_units` | `"MB"` | LSF memory units (`KB`, `MB`, `GB`) |
 | `suppress_job_email` | `true` | Set `LSB_JOB_REPORT_MAIL=N` |
 | `command_timeout` | `100.0` | Timeout in seconds for scheduler commands |
 | `zombie_timeout_minutes` | `30.0` | Mark jobs as failed if unseen for this long |
