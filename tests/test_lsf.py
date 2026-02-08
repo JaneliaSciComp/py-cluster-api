@@ -74,6 +74,21 @@ class TestBuildHeader:
         assert any("-M 8192" in line for line in lines)
         assert any("rusage[mem=8192]" in line for line in lines)
 
+    def test_no_memory(self, tmp_path):
+        """No -M or -R rusage when neither config nor ResourceSpec sets memory."""
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig(
+            executor="lsf",
+            log_directory=str(tmp_path / "logs"),
+            job_name_prefix="test",
+            lsf_units="MB",
+        )
+        executor = LSFExecutor(config)
+        lines = executor.build_header("test-job")
+        assert not any("-M" in line for line in lines)
+        assert not any("rusage" in line for line in lines)
+
     def test_cluster_options(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         res = ResourceSpec(

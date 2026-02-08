@@ -246,3 +246,53 @@ class TestLSFRichMetadata:
             assert job.exec_host is not None
         finally:
             await monitor.stop()
+
+
+class TestLSFNoMemory:
+    """Verify jobs can be submitted without any memory requirement."""
+
+    async def test_no_memory_flags(self, tmp_path):
+        """Submit with no memory in config or ResourceSpec — no -M or -R rusage."""
+        config_path = str(_CONFIG_PATH) if _CONFIG_PATH.exists() else None
+        executor = create_executor(
+            config_path=config_path,
+            executor="lsf",
+            log_directory=str(tmp_path / "logs"),
+            poll_interval=3.0,
+            walltime="00:10",
+            memory=None,
+        )
+
+        # Verify the generated script has no memory directives
+        script = executor.render_script("echo hello", "no-mem-test")
+        assert "-M" not in script
+        assert "rusage" not in script
+
+        # Submit it for real and verify it completes
+        monitor = JobMonitor(executor, poll_interval=3.0)
+        await monitor.start()
+        try:
+            job = await executor.submit(
+                command="sleep 3 && echo 'no memory limit'",
+                name="no-mem",
+            )
+
+            print(f"\nSubmitted job {job.job_id} ({job.name})")
+            print(f"Script: {job.script_path}")
+
+            # Confirm the actual script on disk has no memory flags
+            with open(job.script_path) as f:
+                content = f.read()
+            print(f"Script content:\n{content}")
+            assert "-M" not in content
+            assert "rusage" not in content
+
+            await monitor.wait_for(job, timeout=120.0)
+
+            print(f"Final status: {job.status}")
+            print(f"Exit code: {job.exit_code}")
+
+            assert job.status == JobStatus.DONE
+            assert job.exit_code == 0
+        finally:
+            await monitor.stop()
