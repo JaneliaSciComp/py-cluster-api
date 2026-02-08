@@ -92,6 +92,31 @@ class TestBuildHeader:
         assert not any("-M" in line for line in lines)
         assert not any("rusage" in line for line in lines)
 
+    def test_with_gpus(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        res = ResourceSpec(gpus=2)
+        lines = executor.build_header("test-job", res)
+        assert any('-gpu "num=2"' in line for line in lines)
+
+    def test_no_gpus(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        lines = executor.build_header("test-job")
+        assert not any("-gpu" in line for line in lines)
+
+    def test_gpu_from_config(self, tmp_path):
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig(
+            executor="lsf",
+            log_directory=str(tmp_path / "logs"),
+            job_name_prefix="test",
+            lsf_units="MB",
+            gpus=1,
+        )
+        executor = LSFExecutor(config)
+        lines = executor.build_header("test-job")
+        assert any('-gpu "num=1"' in line for line in lines)
+
     def test_cluster_options(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         res = ResourceSpec(

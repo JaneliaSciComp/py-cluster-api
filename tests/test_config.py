@@ -147,6 +147,12 @@ class TestLoadConfig:
         config = load_config()
         assert config.executor == "local"
 
+    def test_gpu_config(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("executor: lsf\ngpus: 2\n")
+        config = load_config(path=str(config_file))
+        assert config.gpus == 2
+
     def test_env_var_config(self, tmp_path, monkeypatch):
         config_file = tmp_path / "env_config.yaml"
         config_file.write_text("executor: lsf\nqueue: envqueue\n")

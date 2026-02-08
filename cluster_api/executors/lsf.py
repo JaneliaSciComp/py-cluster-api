@@ -109,6 +109,11 @@ class LSFExecutor(Executor):
             if cpus > 1:
                 lines.append(f'{p} -R "span[hosts=1]"')
 
+        # GPUs
+        gpus = (resources and resources.gpus) or self.config.gpus
+        if gpus:
+            lines.append(f'{p} -gpu "num={gpus}"')
+
         # Memory
         memory_str = (resources and resources.memory) or self.config.memory
         if memory_str:

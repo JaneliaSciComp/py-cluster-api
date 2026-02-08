@@ -38,6 +38,7 @@ class ClusterConfig:
 
     executor: str = "local"
     cpus: int | None = None
+    gpus: int | None = None
     memory: str | None = None
     walltime: str | None = None
     queue: str | None = None
