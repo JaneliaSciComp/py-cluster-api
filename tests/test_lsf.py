@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cluster_api._types import JobStatus, ResourceSpec
+from cluster_api._types import ArrayElement, JobRecord, JobStatus, ResourceSpec
 from cluster_api.executors.lsf import (
     LSFExecutor,
     _LSF_STATUS_MAP,
@@ -427,3 +427,223 @@ class TestArrayConcurrency:
             j_line = [line for line in stdin.splitlines() if "-J " in line][0]
             assert "%" not in j_line
             assert "max_concurrent" not in job.metadata
+
+
+class TestParseArrayElements:
+    def _make_bjobs_json(self, records):
+        return json.dumps({"RECORDS": records})
+
+    def test_element_ids_as_keys(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        output = self._make_bjobs_json([
+            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+             "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+            {"JOBID": "12345[2]", "STAT": "RUN", "EXIT_CODE": "-",
+             "EXEC_HOST": "node02", "MAX_MEM": "-",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+        ])
+        result = executor._parse_job_statuses(output)
+        assert "12345[1]" in result
+        assert "12345[2]" in result
+        assert result["12345[1]"][0] == JobStatus.DONE
+        assert result["12345[2]"][0] == JobStatus.RUNNING
+
+    def test_mixed_parent_and_element(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        output = self._make_bjobs_json([
+            {"JOBID": "12345", "STAT": "RUN", "EXIT_CODE": "-",
+             "EXEC_HOST": "-", "MAX_MEM": "-",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+             "EXEC_HOST": "node01", "MAX_MEM": "256 MB",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+        ])
+        result = executor._parse_job_statuses(output)
+        assert "12345" in result
+        assert "12345[1]" in result
+
+
+class TestArrayStatusComputation:
+    def test_no_elements(self):
+        record = JobRecord(
+            job_id="1", name="t", command="echo",
+            status=JobStatus.PENDING,
+            metadata={"array_range": (1, 3)},
+        )
+        assert record.compute_array_status() == JobStatus.PENDING
+
+    def test_all_done(self):
+        record = JobRecord(
+            job_id="1", name="t", command="echo",
+            metadata={"array_range": (1, 3)},
+            array_elements={
+                1: ArrayElement(index=1, status=JobStatus.DONE),
+                2: ArrayElement(index=2, status=JobStatus.DONE),
+                3: ArrayElement(index=3, status=JobStatus.DONE),
+            },
+        )
+        assert record.compute_array_status() == JobStatus.DONE
+
+    def test_any_running(self):
+        record = JobRecord(
+            job_id="1", name="t", command="echo",
+            metadata={"array_range": (1, 3)},
+            array_elements={
+                1: ArrayElement(index=1, status=JobStatus.DONE),
+                2: ArrayElement(index=2, status=JobStatus.RUNNING),
+                3: ArrayElement(index=3, status=JobStatus.PENDING),
+            },
+        )
+        assert record.compute_array_status() == JobStatus.RUNNING
+
+    def test_all_terminal_with_failure(self):
+        record = JobRecord(
+            job_id="1", name="t", command="echo",
+            metadata={"array_range": (1, 3)},
+            array_elements={
+                1: ArrayElement(index=1, status=JobStatus.DONE),
+                2: ArrayElement(index=2, status=JobStatus.FAILED),
+                3: ArrayElement(index=3, status=JobStatus.DONE),
+            },
+        )
+        assert record.compute_array_status() == JobStatus.FAILED
+
+    def test_partial_visibility_stays_running(self):
+        """If not all elements have been seen yet, status stays RUNNING."""
+        record = JobRecord(
+            job_id="1", name="t", command="echo",
+            metadata={"array_range": (1, 5)},
+            array_elements={
+                1: ArrayElement(index=1, status=JobStatus.DONE),
+                2: ArrayElement(index=2, status=JobStatus.DONE),
+            },
+        )
+        assert record.compute_array_status() == JobStatus.RUNNING
+
+    def test_convenience_properties(self):
+        record = JobRecord(
+            job_id="1", name="t", command="echo",
+            metadata={"array_range": (1, 5)},
+            array_elements={
+                1: ArrayElement(index=1, status=JobStatus.DONE),
+                2: ArrayElement(index=2, status=JobStatus.FAILED),
+                3: ArrayElement(index=3, status=JobStatus.DONE),
+                4: ArrayElement(index=4, status=JobStatus.KILLED),
+                5: ArrayElement(index=5, status=JobStatus.DONE),
+            },
+        )
+        assert record.is_array is True
+        assert record.element_count == 5
+        assert record.completed_elements == 5
+        assert sorted(record.failed_element_indices) == [2, 4]
+
+    def test_non_array_job(self):
+        record = JobRecord(job_id="1", name="t", command="echo")
+        assert record.is_array is False
+        assert record.element_count == 0
+        assert record.completed_elements == 0
+        assert record.failed_element_indices == []
+
+
+class TestArrayElementPolling:
+
+    async def test_poll_populates_elements(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <12345> is submitted to queue <normal>.",
+        ):
+            job = await executor.submit_array(
+                command="echo hello",
+                name="arr",
+                array_range=(1, 3),
+            )
+
+        assert job.is_array
+        assert job.element_count == 3
+        assert len(job.array_elements) == 0
+
+        bjobs_output = json.dumps({"RECORDS": [
+            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+             "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+            {"JOBID": "12345[2]", "STAT": "RUN", "EXIT_CODE": "-",
+             "EXEC_HOST": "node02", "MAX_MEM": "-",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+            {"JOBID": "12345[3]", "STAT": "PEND", "EXIT_CODE": "-",
+             "EXEC_HOST": "-", "MAX_MEM": "-",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+        ]})
+
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value=bjobs_output):
+            statuses = await executor.poll()
+
+        assert len(job.array_elements) == 3
+        assert job.array_elements[1].status == JobStatus.DONE
+        assert job.array_elements[1].exec_host == "node01"
+        assert job.array_elements[2].status == JobStatus.RUNNING
+        assert job.array_elements[3].status == JobStatus.PENDING
+        assert job.status == JobStatus.RUNNING
+        assert statuses["12345"] == JobStatus.RUNNING
+
+    async def test_poll_all_done(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <12345> is submitted to queue <normal>.",
+        ):
+            job = await executor.submit_array(
+                command="echo hello",
+                name="arr",
+                array_range=(1, 2),
+            )
+
+        bjobs_output = json.dumps({"RECORDS": [
+            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+             "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+            {"JOBID": "12345[2]", "STAT": "DONE", "EXIT_CODE": "0",
+             "EXEC_HOST": "node02", "MAX_MEM": "256 MB",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+        ]})
+
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value=bjobs_output):
+            await executor.poll()
+
+        assert job.status == JobStatus.DONE
+        assert job.is_terminal
+
+    async def test_poll_partial_failure(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <12345> is submitted to queue <normal>.",
+        ):
+            job = await executor.submit_array(
+                command="echo hello",
+                name="arr",
+                array_range=(1, 3),
+            )
+
+        bjobs_output = json.dumps({"RECORDS": [
+            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+             "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+            {"JOBID": "12345[2]", "STAT": "EXIT", "EXIT_CODE": "1",
+             "EXEC_HOST": "node02", "MAX_MEM": "-",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+            {"JOBID": "12345[3]", "STAT": "DONE", "EXIT_CODE": "0",
+             "EXEC_HOST": "node03", "MAX_MEM": "-",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+        ]})
+
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value=bjobs_output):
+            await executor.poll()
+
+        assert job.status == JobStatus.FAILED
+        assert job.failed_element_indices == [2]
+        assert job.array_elements[2].exit_code == 1

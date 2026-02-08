@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._types import JobExitCondition, JobRecord, JobStatus, ResourceSpec
+from ._types import ArrayElement, JobExitCondition, JobRecord, JobStatus, ResourceSpec
 from .config import ClusterConfig, load_config
 from .core import Executor
 from .exceptions import (
@@ -20,6 +20,7 @@ from .monitor import JobMonitor
 
 __all__ = [
     "create_executor",
+    "ArrayElement",
     "Executor",
     "LSFExecutor",
     "LocalExecutor",

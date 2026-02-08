@@ -15,7 +15,7 @@ from typing import Any
 
 from .config import ClusterConfig
 from .exceptions import ClusterAPIError, CommandFailedError, CommandTimeoutError, SubmitError
-from ._types import JobRecord, JobStatus, ResourceSpec
+from ._types import ArrayElement, JobRecord, JobStatus, ResourceSpec
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,8 @@ _SCRIPT_TEMPLATE = """\
 %(command)s
 %(epilogue)s
 """
+
+_ARRAY_ELEMENT_RE = re.compile(r"^(.+)\[(\d+)\]$")
 
 
 class Executor(abc.ABC):
@@ -265,19 +267,39 @@ class Executor(abc.ABC):
 
         statuses = self._parse_job_statuses(out)
         now = datetime.now(timezone.utc)
+        array_jobs_updated: set[str] = set()
 
-        for job_id, record in self._jobs.items():
-            if record.is_terminal:
-                continue
-            if job_id in statuses:
-                new_status, meta = statuses[job_id]
-                record.status = new_status
-                record._last_seen = now
-                # Update rich metadata
-                for key in ("exec_host", "max_mem", "exit_code",
-                            "submit_time", "start_time", "finish_time"):
-                    if key in meta and meta[key] is not None:
-                        setattr(record, key, meta[key])
+        for raw_id, (new_status, meta) in statuses.items():
+            # Check if this is an array element ID like "12345[1]"
+            m = _ARRAY_ELEMENT_RE.match(raw_id)
+            if m:
+                parent_id, element_index = m.group(1), int(m.group(2))
+                record = self._jobs.get(parent_id)
+                if record and not record.is_terminal and record.is_array:
+                    if element_index not in record.array_elements:
+                        record.array_elements[element_index] = ArrayElement(index=element_index)
+                    elem = record.array_elements[element_index]
+                    elem.status = new_status
+                    for key in ("exec_host", "max_mem", "exit_code",
+                                "submit_time", "start_time", "finish_time"):
+                        if key in meta and meta[key] is not None:
+                            setattr(elem, key, meta[key])
+                    record._last_seen = now
+                    array_jobs_updated.add(parent_id)
+            else:
+                record = self._jobs.get(raw_id)
+                if record and not record.is_terminal:
+                    record.status = new_status
+                    record._last_seen = now
+                    for key in ("exec_host", "max_mem", "exit_code",
+                                "submit_time", "start_time", "finish_time"):
+                        if key in meta and meta[key] is not None:
+                            setattr(record, key, meta[key])
+
+        # Aggregate parent status for array jobs that got element updates
+        for parent_id in array_jobs_updated:
+            record = self._jobs[parent_id]
+            record.status = record.compute_array_status()
 
         return {jid: r.status for jid, r in self._jobs.items()}
 
