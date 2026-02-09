@@ -1,6 +1,6 @@
 [project]
 name = "py-cluster-api"
-version = "0.1.0"
+version = "0.1.1"
 description = "Generic Python library for running jobs on HPC clusters"
 readme = "README.md"
 license = { file = "LICENSE" }
