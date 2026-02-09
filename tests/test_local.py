@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from cluster_api._types import JobStatus
 from cluster_api.executors.local import LocalExecutor
@@ -87,6 +88,54 @@ class TestLocalSubmitAndPoll:
 
         assert job.job_id in executor.jobs
         assert job.job_id not in executor.active_jobs
+
+
+class TestLocalOutputFiles:
+
+    async def test_stdout_written_to_out_file(self, default_config):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(command="echo hello", name="out-test")
+
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+        await executor.poll()
+
+        log_dir = Path(default_config.log_directory)
+        out_file = log_dir / f"{job.name}.out"
+        err_file = log_dir / f"{job.name}.err"
+        assert out_file.exists()
+        assert err_file.exists()
+        assert out_file.read_text().strip() == "hello"
+        assert err_file.read_text() == ""
+
+    async def test_stderr_written_to_err_file(self, default_config):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(command="echo oops >&2", name="err-test")
+
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+        await executor.poll()
+
+        log_dir = Path(default_config.log_directory)
+        out_file = log_dir / f"{job.name}.out"
+        err_file = log_dir / f"{job.name}.err"
+        assert out_file.read_text() == ""
+        assert err_file.read_text().strip() == "oops"
+
+    async def test_failed_job_writes_output_files(self, default_config):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="echo failing >&2; exit 1", name="fail-out-test"
+        )
+
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+        await executor.poll()
+
+        log_dir = Path(default_config.log_directory)
+        err_file = log_dir / f"{job.name}.err"
+        assert err_file.read_text().strip() == "failing"
+        assert job.status == JobStatus.FAILED
 
 
 class TestLocalCallback:

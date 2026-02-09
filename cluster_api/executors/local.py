@@ -76,7 +76,9 @@ class LocalExecutor(Executor):
                 continue
 
             if proc.returncode is not None:
-                # Process finished
+                # Process finished — capture output to log files
+                await self._write_output_files(record.name, proc)
+
                 now = datetime.now(timezone.utc)
                 record.finish_time = now
                 record._last_seen = now
@@ -105,3 +107,13 @@ class LocalExecutor(Executor):
         if job_id in self._jobs:
             self._jobs[job_id].status = JobStatus.KILLED
         logger.info("Cancelled local job %s", job_id)
+
+    async def _write_output_files(
+        self, job_name: str, proc: asyncio.subprocess.Process
+    ) -> None:
+        """Write captured stdout/stderr to .out/.err files in the log directory."""
+        stdout_data, stderr_data = await proc.communicate()
+        out_path = self._log_dir / f"{job_name}.out"
+        err_path = self._log_dir / f"{job_name}.err"
+        out_path.write_bytes(stdout_data or b"")
+        err_path.write_bytes(stderr_data or b"")
