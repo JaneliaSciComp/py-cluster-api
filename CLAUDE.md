@@ -4,7 +4,7 @@ Generic Python library for submitting and monitoring jobs on HPC clusters. Wraps
 
 Founding principles: async-only API, executors are thin wrappers around scheduler CLIs, all state lives in `JobRecord` dataclasses tracked in-process, monitoring is poll-based via `bjobs -json`, and configuration uses Nextflow-style YAML profiles.
 
-Always use `pixi run` to run commands — never invoke pytest, ruff, or other tools directly.
+Always use `pixi run` to run commands — never invoke python, pytest, ruff, or other tools directly.
 
 ## Build & Run
 
@@ -22,12 +22,22 @@ pixi run check        # lint + test
 
 - `cluster_api/` — library source
   - `core.py` — abstract `Executor` base class
-  - `_types.py` — `JobStatus`, `JobRecord`, `ResourceSpec`, `JobExitCondition`
+  - `_types.py` — `JobStatus`, `JobRecord`, `ResourceSpec`, `JobExitCondition`, `ArrayElement`
   - `config.py` — YAML config loader with profiles
+  - `script.py` — script rendering (`render_script`) and writing (`write_script`)
   - `monitor.py` — async polling loop + callback dispatch
+  - `exceptions.py` — `ClusterAPIError`, `CommandTimeoutError`, `CommandFailedError`, `SubmitError`
   - `executors/lsf.py` — LSF executor (bsub/bjobs/bkill)
   - `executors/local.py` — local subprocess executor (for testing)
 - `tests/` — pytest tests; all async tests use pytest-asyncio with `asyncio_mode = "auto"`
+
+## Log File Naming
+
+Default log files include the job ID for uniqueness:
+- **LSF**: `stdout.%J.log` / `stderr.%J.log` (`%J` = job ID); array jobs use `stdout.%J.%I.log` (`%I` = array index)
+- **Local**: `stdout.{job_id}.log` / `stderr.{job_id}.log`
+
+Explicit `stdout_path` / `stderr_path` in `ResourceSpec` override these defaults.
 
 ## Testing
 
