@@ -116,7 +116,8 @@ class Executor(abc.ABC):
         script = self.render_script(command, full_name, resources, prologue, epilogue)
         script_path = self._write_script(script, full_name)
 
-        job_id = await self._submit_job(script_path, full_name, env)
+        cwd = resources.work_dir if resources else None
+        job_id = await self._submit_job(script_path, full_name, env, cwd=cwd)
 
         record = JobRecord(
             job_id=job_id,
@@ -149,8 +150,9 @@ class Executor(abc.ABC):
         script = self.render_script(command, full_name, resources, prologue, epilogue)
         script_path = self._write_script(script, full_name)
 
+        cwd = resources.work_dir if resources else None
         job_id = await self._submit_array_job(
-            script_path, full_name, array_range, env, max_concurrent
+            script_path, full_name, array_range, env, max_concurrent, cwd=cwd
         )
 
         meta = {**(metadata or {}), "array_range": array_range}
@@ -179,6 +181,8 @@ class Executor(abc.ABC):
         script_path: str,
         name: str,
         env: dict[str, str] | None = None,
+        *,
+        cwd: str | None = None,
     ) -> str:
         """Submit a script and return the job ID. Override for stdin submission."""
         out = await self._call(
@@ -195,9 +199,11 @@ class Executor(abc.ABC):
         array_range: tuple[int, int],
         env: dict[str, str] | None = None,
         max_concurrent: int | None = None,
+        *,
+        cwd: str | None = None,
     ) -> str:
         """Submit an array job. Override in subclasses."""
-        return await self._submit_job(script_path, name, env)
+        return await self._submit_job(script_path, name, env, cwd=cwd)
 
     def _write_script(self, script_content: str, name: str) -> str:
         """Write job script to log directory and return its path."""

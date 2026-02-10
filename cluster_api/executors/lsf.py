@@ -88,9 +88,11 @@ class LSFExecutor(Executor):
 
         lines.append(f"{p} -J {name}")
 
+        stdout_path = resources and resources.stdout_path
+        stderr_path = resources and resources.stderr_path
         log_dir = self.config.log_directory
-        lines.append(f"{p} -o {log_dir}/{name}.out")
-        lines.append(f"{p} -e {log_dir}/{name}.err")
+        lines.append(f"{p} -o {stdout_path or f'{log_dir}/{name}.out'}")
+        lines.append(f"{p} -e {stderr_path or f'{log_dir}/{name}.err'}")
 
         # Queue
         queue = (resources and resources.queue) or self.config.queue
@@ -172,8 +174,10 @@ class LSFExecutor(Executor):
         script_path: str,
         name: str,
         env: dict[str, str] | None = None,
+        *,
+        cwd: str | None = None,
     ) -> str:
-        """Submit via bsub with stdin mode support."""
+        """Submit via bsub with stdin mode support (cwd handled by #BSUB -cwd)."""
         out = await self._bsub(script_path, None, env)
         return self._job_id_from_submit_output(out)
 
@@ -184,8 +188,10 @@ class LSFExecutor(Executor):
         array_range: tuple[int, int],
         env: dict[str, str] | None = None,
         max_concurrent: int | None = None,
+        *,
+        cwd: str | None = None,
     ) -> str:
-        """Submit an array job with -J 'name[start-end]'."""
+        """Submit an array job with -J 'name[start-end]' (cwd handled by #BSUB -cwd)."""
         array_spec = f"{array_range[0]}-{array_range[1]}"
         if max_concurrent is not None:
             array_spec += f"%{max_concurrent}"

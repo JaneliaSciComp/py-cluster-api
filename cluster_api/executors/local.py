@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .._types import JobStatus, ResourceSpec
@@ -39,6 +40,8 @@ class LocalExecutor(Executor):
         script_path: str,
         name: str,
         env: dict[str, str] | None = None,
+        *,
+        cwd: str | None = None,
     ) -> str:
         """Run script as a background subprocess."""
         full_env = {**os.environ, **(env or {})}
@@ -48,6 +51,7 @@ class LocalExecutor(Executor):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=full_env,
+            cwd=cwd,
         )
 
         job_id = str(self._next_id)
@@ -77,7 +81,7 @@ class LocalExecutor(Executor):
 
             if proc.returncode is not None:
                 # Process finished — capture output to log files
-                await self._write_output_files(record.name, proc)
+                await self._write_output_files(record.name, proc, record.resources)
 
                 now = datetime.now(timezone.utc)
                 record.finish_time = now
@@ -109,11 +113,18 @@ class LocalExecutor(Executor):
         logger.info("Cancelled local job %s", job_id)
 
     async def _write_output_files(
-        self, job_name: str, proc: asyncio.subprocess.Process
+        self, job_name: str, proc: asyncio.subprocess.Process,
+        resources: ResourceSpec | None = None,
     ) -> None:
-        """Write captured stdout/stderr to .out/.err files in the log directory."""
+        """Write captured stdout/stderr to log files.
+
+        Uses per-job paths from ResourceSpec if set, otherwise falls back
+        to the global log directory.
+        """
         stdout_data, stderr_data = await proc.communicate()
-        out_path = self._log_dir / f"{job_name}.out"
-        err_path = self._log_dir / f"{job_name}.err"
+        out_path = Path(resources.stdout_path) if resources and resources.stdout_path else self._log_dir / f"{job_name}.out"
+        err_path = Path(resources.stderr_path) if resources and resources.stderr_path else self._log_dir / f"{job_name}.err"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        err_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(stdout_data or b"")
         err_path.write_bytes(stderr_data or b"")

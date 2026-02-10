@@ -42,6 +42,8 @@ class ResourceSpec:
     queue: str | None = None
     account: str | None = None
     work_dir: str | None = None
+    stdout_path: str | None = None
+    stderr_path: str | None = None
     cluster_options: list[str] | None = None
 
 

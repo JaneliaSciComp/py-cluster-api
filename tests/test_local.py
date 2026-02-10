@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from cluster_api._types import JobStatus
+from cluster_api._types import JobStatus, ResourceSpec
 from cluster_api.executors.local import LocalExecutor
 
 
@@ -136,6 +136,40 @@ class TestLocalOutputFiles:
         err_file = log_dir / f"{job.name}.err"
         assert err_file.read_text().strip() == "failing"
         assert job.status == JobStatus.FAILED
+
+
+class TestLocalWorkDir:
+
+    async def test_work_dir_sets_cwd(self, default_config, tmp_path):
+        work_dir = tmp_path / "workdir"
+        work_dir.mkdir()
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="pwd",
+            name="cwd-test",
+            resources=ResourceSpec(work_dir=str(work_dir)),
+        )
+
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+        await executor.poll()
+
+        log_dir = Path(default_config.log_directory)
+        out_file = log_dir / f"{job.name}.out"
+        assert out_file.read_text().strip() == str(work_dir)
+
+    async def test_default_cwd_without_work_dir(self, default_config):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(command="pwd", name="no-cwd-test")
+
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+        await executor.poll()
+
+        log_dir = Path(default_config.log_directory)
+        out_file = log_dir / f"{job.name}.out"
+        # Without work_dir, inherits the current process cwd
+        assert out_file.read_text().strip() == str(Path.cwd())
 
 
 class TestLocalCallback:
