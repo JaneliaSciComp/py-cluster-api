@@ -10,7 +10,6 @@ import re
 import secrets
 import string
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from .config import ClusterConfig
@@ -33,7 +32,6 @@ class Executor(abc.ABC):
     def __init__(self, config: ClusterConfig) -> None:
         self.config = config
         self._jobs: dict[str, JobRecord] = {}
-        self._work_dir = Path.cwd()
         if config.job_name_prefix:
             self._prefix = config.job_name_prefix
         else:
@@ -55,11 +53,12 @@ class Executor(abc.ABC):
         metadata: dict[str, Any] | None = None,
     ) -> JobRecord:
         """Submit a job to the scheduler."""
+        resources = resources or ResourceSpec()
         full_name = f"{self._prefix}-{name}"
 
-        cwd = resources.work_dir if resources else None
         job_id, script_path = await self._submit_job(
-            command, full_name, resources, prologue, epilogue, env, cwd=cwd,
+            command, full_name, resources, prologue, epilogue, env,
+            cwd=resources.work_dir,
         )
 
         record = JobRecord(
@@ -89,12 +88,12 @@ class Executor(abc.ABC):
         max_concurrent: int | None = None,
     ) -> JobRecord:
         """Submit a job array to the scheduler."""
+        resources = resources or ResourceSpec()
         full_name = f"{self._prefix}-{name}"
 
-        cwd = resources.work_dir if resources else None
         job_id, script_path = await self._submit_array_job(
             command, full_name, array_range, resources, prologue, epilogue,
-            env, max_concurrent, cwd=cwd,
+            env, max_concurrent, cwd=resources.work_dir,
         )
 
         meta = {**(metadata or {}), "array_range": array_range}
@@ -123,7 +122,7 @@ class Executor(abc.ABC):
         self,
         command: str,
         name: str,
-        resources: ResourceSpec | None = None,
+        resources: ResourceSpec,
         prologue: list[str] | None = None,
         epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
@@ -142,7 +141,7 @@ class Executor(abc.ABC):
         command: str,
         name: str,
         array_range: tuple[int, int],
-        resources: ResourceSpec | None = None,
+        resources: ResourceSpec,
         prologue: list[str] | None = None,
         epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,

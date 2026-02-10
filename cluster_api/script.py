@@ -61,11 +61,12 @@ def render_script(
     }
 
 
-def write_script(directory: Path, content: str, name: str, counter: int) -> str:
+def write_script(directory: str, content: str, name: str, counter: int) -> str:
     """Write a job script to *directory* and return the path as a string.
 
     The file is named ``{safe_name}.{counter}.sh`` and made executable.
     """
+    directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     safe_name = re.sub(r"[^\w\-.]", "_", name)
     script_path = directory / f"{safe_name}.{counter}.sh"

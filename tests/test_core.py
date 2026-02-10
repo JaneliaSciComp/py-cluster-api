@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from cluster_api._types import JobStatus, ResourceSpec
@@ -105,7 +103,7 @@ class TestCallTimeout:
 
 class TestWriteScript:
     def test_write_script(self, tmp_path):
-        path = write_script(tmp_path, "#!/bin/bash\necho hello", "my-job", 1)
+        path = write_script(str(tmp_path), "#!/bin/bash\necho hello", "my-job", 1)
         assert path.endswith(".sh")
         with open(path) as f:
             assert "echo hello" in f.read()

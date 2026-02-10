@@ -107,7 +107,6 @@ class TestBuildHeader:
 
         config = ClusterConfig(
             executor="lsf",
-            work_dir=str(tmp_path / "logs"),
             job_name_prefix="test",
             lsf_units="MB",
             gpus=1,
@@ -270,7 +269,7 @@ class TestBuildStatusArgs:
 
 class TestSubmission:
 
-    async def test_submit_stdin(self, lsf_config):
+    async def test_submit_stdin(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
@@ -280,6 +279,7 @@ class TestSubmission:
             job = await executor.submit(
                 command="echo hello",
                 name="my-job",
+                resources=ResourceSpec(work_dir=work_dir),
             )
             assert job.job_id == "12345"
             assert job.name == "test-my-job"
@@ -289,21 +289,24 @@ class TestSubmission:
             assert call_args.kwargs.get("stdin_data") is not None
 
 
-    async def test_submit_email_suppression(self, lsf_config):
+    async def test_submit_email_suppression(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
             new_callable=AsyncMock,
             return_value="Job <12345> is submitted to queue <normal>.",
         ) as mock_call:
-            await executor.submit(command="echo hello", name="my-job")
+            await executor.submit(
+                command="echo hello", name="my-job",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
             call_args = mock_call.call_args
             env = call_args.kwargs.get("env")
             assert env is not None
             assert env.get("LSB_JOB_REPORT_MAIL") == "N"
 
 
-    async def test_submit_array(self, lsf_config):
+    async def test_submit_array(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
@@ -314,6 +317,7 @@ class TestSubmission:
                 command="python process.py --index $LSB_JOBINDEX",
                 name="batch",
                 array_range=(1, 50),
+                resources=ResourceSpec(work_dir=work_dir),
             )
             assert job.job_id == "12345"
             assert job.metadata["array_range"] == (1, 50)
@@ -325,7 +329,7 @@ class TestSubmission:
 
 class TestArrayScriptRewriting:
 
-    async def test_percent_i_substitution(self, lsf_config):
+    async def test_percent_i_substitution(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
@@ -336,6 +340,7 @@ class TestArrayScriptRewriting:
                 command="echo hello",
                 name="arr",
                 array_range=(1, 10),
+                resources=ResourceSpec(work_dir=work_dir),
             )
             stdin = mock_call.call_args.kwargs.get("stdin_data", "")
             assert "stdout.%I.log" in stdin
@@ -390,7 +395,7 @@ class TestLsfStatusMap:
 
 class TestArrayConcurrency:
 
-    async def test_with_max_concurrent(self, lsf_config):
+    async def test_with_max_concurrent(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
@@ -402,6 +407,7 @@ class TestArrayConcurrency:
                 name="batch",
                 array_range=(1, 100),
                 max_concurrent=15,
+                resources=ResourceSpec(work_dir=work_dir),
             )
             assert job.job_id == "12345"
             assert job.metadata["max_concurrent"] == 15
@@ -409,7 +415,7 @@ class TestArrayConcurrency:
             assert "[1-100%15]" in stdin
 
 
-    async def test_without_max_concurrent(self, lsf_config):
+    async def test_without_max_concurrent(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
@@ -420,6 +426,7 @@ class TestArrayConcurrency:
                 command="echo hello",
                 name="batch",
                 array_range=(1, 100),
+                resources=ResourceSpec(work_dir=work_dir),
             )
             stdin = mock_call.call_args.kwargs.get("stdin_data", "")
             assert "[1-100]" in stdin
@@ -547,7 +554,7 @@ class TestArrayStatusComputation:
 
 class TestArrayElementPolling:
 
-    async def test_poll_populates_elements(self, lsf_config):
+    async def test_poll_populates_elements(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
@@ -558,6 +565,7 @@ class TestArrayElementPolling:
                 command="echo hello",
                 name="arr",
                 array_range=(1, 3),
+                resources=ResourceSpec(work_dir=work_dir),
             )
 
         assert job.is_array
@@ -587,7 +595,7 @@ class TestArrayElementPolling:
         assert job.status == JobStatus.RUNNING
         assert statuses["12345"] == JobStatus.RUNNING
 
-    async def test_poll_all_done(self, lsf_config):
+    async def test_poll_all_done(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
@@ -598,6 +606,7 @@ class TestArrayElementPolling:
                 command="echo hello",
                 name="arr",
                 array_range=(1, 2),
+                resources=ResourceSpec(work_dir=work_dir),
             )
 
         bjobs_output = json.dumps({"RECORDS": [
@@ -615,7 +624,7 @@ class TestArrayElementPolling:
         assert job.status == JobStatus.DONE
         assert job.is_terminal
 
-    async def test_poll_partial_failure(self, lsf_config):
+    async def test_poll_partial_failure(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(
             executor, "_call",
@@ -626,6 +635,7 @@ class TestArrayElementPolling:
                 command="echo hello",
                 name="arr",
                 array_range=(1, 3),
+                resources=ResourceSpec(work_dir=work_dir),
             )
 
         bjobs_output = json.dumps({"RECORDS": [

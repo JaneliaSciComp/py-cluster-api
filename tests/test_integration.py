@@ -41,7 +41,6 @@ def lsf_executor(tmp_path):
         config_path=config_path,
         # Overrides that always apply for integration tests
         executor="lsf",
-        work_dir=str(tmp_path / "logs"),
         poll_interval=3.0,
         walltime="00:10",
     )
@@ -257,7 +256,6 @@ class TestLSFNoMemory:
         executor = create_executor(
             config_path=config_path,
             executor="lsf",
-            work_dir=str(tmp_path / "logs"),
             poll_interval=3.0,
             walltime="00:10",
             memory=None,

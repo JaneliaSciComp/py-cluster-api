@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable
@@ -41,7 +42,7 @@ class ResourceSpec:
     walltime: str | None = None
     queue: str | None = None
     account: str | None = None
-    work_dir: str | None = None
+    work_dir: str = field(default_factory=os.getcwd)
     stdout_path: str | None = None
     stderr_path: str | None = None
     cluster_options: list[str] | None = None

@@ -41,7 +41,7 @@ class LocalExecutor(Executor):
         self,
         command: str,
         name: str,
-        resources: ResourceSpec | None = None,
+        resources: ResourceSpec,
         prologue: list[str] | None = None,
         epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
@@ -52,8 +52,7 @@ class LocalExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        job_work_dir = Path(resources.work_dir) if resources and resources.work_dir else self._work_dir
-        script_path = write_script(job_work_dir, script, name, self._script_counter)
+        script_path = write_script(resources.work_dir, script, name, self._script_counter)
 
         full_env = {**os.environ, **(env or {})}
 
@@ -92,7 +91,7 @@ class LocalExecutor(Executor):
 
             if proc.returncode is not None:
                 # Process finished — capture output to log files
-                await self._write_output_files(record.name, proc, record.resources)
+                await self._write_output_files(record.name, proc, record.resources or ResourceSpec())
 
                 now = datetime.now(timezone.utc)
                 record.finish_time = now
@@ -125,7 +124,7 @@ class LocalExecutor(Executor):
 
     async def _write_output_files(
         self, job_name: str, proc: asyncio.subprocess.Process,
-        resources: ResourceSpec | None = None,
+        resources: ResourceSpec,
     ) -> None:
         """Write captured stdout/stderr to output files.
 
@@ -133,9 +132,9 @@ class LocalExecutor(Executor):
         ``stdout.log`` / ``stderr.log`` into the effective work directory.
         """
         stdout_data, stderr_data = await proc.communicate()
-        base = Path(resources.work_dir) if resources and resources.work_dir else self._work_dir
-        out_path = Path(resources.stdout_path) if resources and resources.stdout_path else base / "stdout.log"
-        err_path = Path(resources.stderr_path) if resources and resources.stderr_path else base / "stderr.log"
+        base = Path(resources.work_dir)
+        out_path = Path(resources.stdout_path) if resources.stdout_path else base / "stdout.log"
+        err_path = Path(resources.stderr_path) if resources.stderr_path else base / "stderr.log"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         err_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(stdout_data or b"")

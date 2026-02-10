@@ -8,7 +8,6 @@ import logging
 import math
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from .._types import JobStatus, ResourceSpec
@@ -86,43 +85,41 @@ class LSFExecutor(Executor):
         self, name: str, resources: ResourceSpec | None = None
     ) -> list[str]:
         """Build #BSUB directive lines."""
+        resources = resources or ResourceSpec()
         lines: list[str] = []
         p = self.directive_prefix
 
         lines.append(f"{p} -J {name}")
 
-        stdout_path = resources and resources.stdout_path
-        stderr_path = resources and resources.stderr_path
-        effective_work_dir = (resources and resources.work_dir) or str(self._work_dir)
-        out = stdout_path or f"{effective_work_dir}/stdout.log"
-        err = stderr_path or f"{effective_work_dir}/stderr.log"
+        out = resources.stdout_path or f"{resources.work_dir}/stdout.log"
+        err = resources.stderr_path or f"{resources.work_dir}/stderr.log"
         lines.append(f"{p} -o {out}")
         lines.append(f"{p} -e {err}")
 
         # Queue
-        queue = (resources and resources.queue) or self.config.queue
+        queue = resources.queue or self.config.queue
         if queue:
             lines.append(f"{p} -q {queue}")
 
         # Account/project
-        account = (resources and resources.account) or self.config.account
+        account = resources.account or self.config.account
         if account:
             lines.append(f"{p} -P {account}")
 
         # CPUs
-        cpus = (resources and resources.cpus) or self.config.cpus
+        cpus = resources.cpus or self.config.cpus
         if cpus:
             lines.append(f"{p} -n {cpus}")
             if cpus > 1:
                 lines.append(f'{p} -R "span[hosts=1]"')
 
         # GPUs
-        gpus = (resources and resources.gpus) or self.config.gpus
+        gpus = resources.gpus or self.config.gpus
         if gpus:
             lines.append(f'{p} -gpu "num={gpus}"')
 
         # Memory
-        memory_str = (resources and resources.memory) or self.config.memory
+        memory_str = resources.memory or self.config.memory
         if memory_str:
             mem_bytes = parse_memory_bytes(memory_str)
             mem_val = lsf_format_bytes_ceil(mem_bytes, self._lsf_units)
@@ -130,17 +127,15 @@ class LSFExecutor(Executor):
             lines.append(f'{p} -R "rusage[mem={mem_val}]"')
 
         # Walltime
-        walltime = (resources and resources.walltime) or self.config.walltime
+        walltime = resources.walltime or self.config.walltime
         if walltime:
             lines.append(f"{p} -W {walltime}")
 
         # Working directory
-        work_dir = resources and resources.work_dir
-        if work_dir:
-            lines.append(f"{p} -cwd {work_dir}")
+        lines.append(f"{p} -cwd {resources.work_dir}")
 
         # Custom cluster options
-        if resources and resources.cluster_options:
+        if resources.cluster_options:
             for opt in resources.cluster_options:
                 lines.append(f"{p} {opt}")
 
@@ -178,7 +173,7 @@ class LSFExecutor(Executor):
         self,
         command: str,
         name: str,
-        resources: ResourceSpec | None = None,
+        resources: ResourceSpec,
         prologue: list[str] | None = None,
         epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
@@ -189,8 +184,7 @@ class LSFExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        job_work_dir = Path(resources.work_dir) if resources and resources.work_dir else self._work_dir
-        script_path = write_script(job_work_dir, script, name, self._script_counter)
+        script_path = write_script(resources.work_dir, script, name, self._script_counter)
 
         out = await self._bsub(script_path, None, env)
         return self._job_id_from_submit_output(out), script_path
@@ -200,7 +194,7 @@ class LSFExecutor(Executor):
         command: str,
         name: str,
         array_range: tuple[int, int],
-        resources: ResourceSpec | None = None,
+        resources: ResourceSpec,
         prologue: list[str] | None = None,
         epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
@@ -212,8 +206,7 @@ class LSFExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        job_work_dir = Path(resources.work_dir) if resources and resources.work_dir else self._work_dir
-        script_path = write_script(job_work_dir, script, name, self._script_counter)
+        script_path = write_script(resources.work_dir, script, name, self._script_counter)
 
         array_spec = f"{array_range[0]}-{array_range[1]}"
         if max_concurrent is not None:
