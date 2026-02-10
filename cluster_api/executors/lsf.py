@@ -8,6 +8,7 @@ import logging
 import math
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .._types import JobStatus, ResourceSpec
@@ -188,7 +189,8 @@ class LSFExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        script_path = write_script(self._work_dir, script, name, self._script_counter)
+        job_work_dir = Path(resources.work_dir) if resources and resources.work_dir else self._work_dir
+        script_path = write_script(job_work_dir, script, name, self._script_counter)
 
         out = await self._bsub(script_path, None, env)
         return self._job_id_from_submit_output(out), script_path
@@ -210,7 +212,8 @@ class LSFExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        script_path = write_script(self._work_dir, script, name, self._script_counter)
+        job_work_dir = Path(resources.work_dir) if resources and resources.work_dir else self._work_dir
+        script_path = write_script(job_work_dir, script, name, self._script_counter)
 
         array_spec = f"{array_range[0]}-{array_range[1]}"
         if max_concurrent is not None:

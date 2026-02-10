@@ -83,7 +83,6 @@ class TestBuildHeader:
 
         config = ClusterConfig(
             executor="lsf",
-            work_dir=str(tmp_path / "logs"),
             job_name_prefix="test",
             lsf_units="MB",
         )

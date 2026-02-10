@@ -8,11 +8,16 @@ from cluster_api.config import ClusterConfig
 
 
 @pytest.fixture
-def default_config(tmp_path):
-    """A default ClusterConfig with work_dir set to a temp dir."""
+def work_dir(tmp_path):
+    """Temporary work directory for job scripts and output."""
+    return str(tmp_path)
+
+
+@pytest.fixture
+def default_config():
+    """A default ClusterConfig for local testing."""
     return ClusterConfig(
         executor="local",
-        work_dir=str(tmp_path / "logs"),
         job_name_prefix="test",
         poll_interval=0.5,
         command_timeout=10.0,
@@ -22,11 +27,10 @@ def default_config(tmp_path):
 
 
 @pytest.fixture
-def lsf_config(tmp_path):
+def lsf_config():
     """An LSF ClusterConfig for testing."""
     return ClusterConfig(
         executor="lsf",
-        work_dir=str(tmp_path / "logs"),
         job_name_prefix="test",
         queue="normal",
         memory="8 GB",

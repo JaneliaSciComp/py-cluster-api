@@ -11,9 +11,12 @@ from cluster_api.executors.local import LocalExecutor
 
 class TestLocalSubmitAndPoll:
 
-    async def test_submit_and_poll_success(self, default_config):
+    async def test_submit_and_poll_success(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job = await executor.submit(command="echo hello", name="echo-test")
+        job = await executor.submit(
+            command="echo hello", name="echo-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
         assert job.status == JobStatus.PENDING
 
         # Wait for subprocess to finish
@@ -25,9 +28,12 @@ class TestLocalSubmitAndPoll:
         assert job.exit_code == 0
 
 
-    async def test_submit_and_poll_failure(self, default_config):
+    async def test_submit_and_poll_failure(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job = await executor.submit(command="exit 1", name="fail-test")
+        job = await executor.submit(
+            command="exit 1", name="fail-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
 
         proc = executor._processes[job.job_id]
         await proc.wait()
@@ -37,9 +43,12 @@ class TestLocalSubmitAndPoll:
         assert job.exit_code == 1
 
 
-    async def test_running_job(self, default_config):
+    async def test_running_job(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job = await executor.submit(command="sleep 10", name="sleep-test")
+        job = await executor.submit(
+            command="sleep 10", name="sleep-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
 
         # Poll while still running
         await asyncio.sleep(0.1)
@@ -50,19 +59,28 @@ class TestLocalSubmitAndPoll:
         await executor.cancel(job.job_id)
 
 
-    async def test_cancel(self, default_config):
+    async def test_cancel(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job = await executor.submit(command="sleep 60", name="cancel-test")
+        job = await executor.submit(
+            command="sleep 60", name="cancel-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
 
         await asyncio.sleep(0.1)
         await executor.cancel(job.job_id)
         assert job.status == JobStatus.KILLED
 
 
-    async def test_multiple_jobs(self, default_config):
+    async def test_multiple_jobs(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job1 = await executor.submit(command="echo one", name="job1")
-        job2 = await executor.submit(command="echo two", name="job2")
+        job1 = await executor.submit(
+            command="echo one", name="job1",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        job2 = await executor.submit(
+            command="echo two", name="job2",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
 
         assert job1.job_id != job2.job_id
 
@@ -76,9 +94,12 @@ class TestLocalSubmitAndPoll:
         assert job2.status == JobStatus.DONE
 
 
-    async def test_jobs_property(self, default_config):
+    async def test_jobs_property(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job = await executor.submit(command="echo hello", name="prop-test")
+        job = await executor.submit(
+            command="echo hello", name="prop-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
         assert job.job_id in executor.jobs
         assert job.job_id in executor.active_jobs
 
@@ -92,48 +113,52 @@ class TestLocalSubmitAndPoll:
 
 class TestLocalOutputFiles:
 
-    async def test_stdout_written_to_out_file(self, default_config):
-        executor = LocalExecutor(default_config)
-        job = await executor.submit(command="echo hello", name="out-test")
-
-        proc = executor._processes[job.job_id]
-        await proc.wait()
-        await executor.poll()
-
-        work_dir = Path(default_config.work_dir)
-        out_file = work_dir / "stdout.log"
-        err_file = work_dir / "stderr.log"
-        assert out_file.exists()
-        assert err_file.exists()
-        assert out_file.read_text().strip() == "hello"
-        assert err_file.read_text() == ""
-
-    async def test_stderr_written_to_err_file(self, default_config):
-        executor = LocalExecutor(default_config)
-        job = await executor.submit(command="echo oops >&2", name="err-test")
-
-        proc = executor._processes[job.job_id]
-        await proc.wait()
-        await executor.poll()
-
-        work_dir = Path(default_config.work_dir)
-        out_file = work_dir / "stdout.log"
-        err_file = work_dir / "stderr.log"
-        assert out_file.read_text() == ""
-        assert err_file.read_text().strip() == "oops"
-
-    async def test_failed_job_writes_output_files(self, default_config):
+    async def test_stdout_written_to_out_file(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
         job = await executor.submit(
-            command="echo failing >&2; exit 1", name="fail-out-test"
+            command="echo hello", name="out-test",
+            resources=ResourceSpec(work_dir=work_dir),
         )
 
         proc = executor._processes[job.job_id]
         await proc.wait()
         await executor.poll()
 
-        work_dir = Path(default_config.work_dir)
-        err_file = work_dir / "stderr.log"
+        out_file = Path(work_dir) / "stdout.log"
+        err_file = Path(work_dir) / "stderr.log"
+        assert out_file.exists()
+        assert err_file.exists()
+        assert out_file.read_text().strip() == "hello"
+        assert err_file.read_text() == ""
+
+    async def test_stderr_written_to_err_file(self, default_config, work_dir):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="echo oops >&2", name="err-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+        await executor.poll()
+
+        out_file = Path(work_dir) / "stdout.log"
+        err_file = Path(work_dir) / "stderr.log"
+        assert out_file.read_text() == ""
+        assert err_file.read_text().strip() == "oops"
+
+    async def test_failed_job_writes_output_files(self, default_config, work_dir):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="echo failing >&2; exit 1", name="fail-out-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+        await executor.poll()
+
+        err_file = Path(work_dir) / "stderr.log"
         assert err_file.read_text().strip() == "failing"
         assert job.status == JobStatus.FAILED
 
@@ -157,7 +182,8 @@ class TestLocalWorkDir:
         out_file = work_dir / "stdout.log"
         assert out_file.read_text().strip() == str(work_dir)
 
-    async def test_default_cwd_without_work_dir(self, default_config):
+    async def test_default_cwd_without_work_dir(self, default_config, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
         executor = LocalExecutor(default_config)
         job = await executor.submit(command="pwd", name="no-cwd-test")
 
@@ -165,17 +191,19 @@ class TestLocalWorkDir:
         await proc.wait()
         await executor.poll()
 
-        work_dir = Path(default_config.work_dir)
-        out_file = work_dir / "stdout.log"
+        out_file = tmp_path / "stdout.log"
         # Without work_dir, inherits the current process cwd
-        assert out_file.read_text().strip() == str(Path.cwd())
+        assert out_file.read_text().strip() == str(tmp_path)
 
 
 class TestLocalCallback:
 
-    async def test_callback_fires_on_success(self, default_config):
+    async def test_callback_fires_on_success(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job = await executor.submit(command="echo hello", name="cb-test")
+        job = await executor.submit(
+            command="echo hello", name="cb-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
 
         results = []
         job.on_success(lambda j: results.append(("success", j.job_id)))
@@ -194,9 +222,12 @@ class TestLocalCallback:
         assert results[0] == ("success", job.job_id)
 
 
-    async def test_callback_fires_on_failure(self, default_config):
+    async def test_callback_fires_on_failure(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job = await executor.submit(command="exit 42", name="fail-cb-test")
+        job = await executor.submit(
+            command="exit 42", name="fail-cb-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
 
         results = []
         job.on_success(lambda j: results.append("success"))

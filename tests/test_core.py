@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cluster_api._types import JobStatus
+from cluster_api._types import JobStatus, ResourceSpec
 from cluster_api.exceptions import CommandFailedError, CommandTimeoutError, SubmitError
 from cluster_api.executors.local import LocalExecutor
 from cluster_api.script import render_script, write_script
@@ -104,10 +104,8 @@ class TestCallTimeout:
 
 
 class TestWriteScript:
-    def test_write_script(self, default_config):
-        work_dir = Path(default_config.work_dir)
-        work_dir.mkdir(parents=True, exist_ok=True)
-        path = write_script(work_dir, "#!/bin/bash\necho hello", "my-job", 1)
+    def test_write_script(self, tmp_path):
+        path = write_script(tmp_path, "#!/bin/bash\necho hello", "my-job", 1)
         assert path.endswith(".sh")
         with open(path) as f:
             assert "echo hello" in f.read()
@@ -118,18 +116,18 @@ class TestPrefix:
         executor = LocalExecutor(default_config)
         assert executor._prefix == "test"
 
-    def test_random_prefix_when_none(self, tmp_path):
+    def test_random_prefix_when_none(self):
         from cluster_api.config import ClusterConfig
 
-        config = ClusterConfig(work_dir=str(tmp_path / "logs"))
+        config = ClusterConfig()
         executor = LocalExecutor(config)
         assert len(executor._prefix) == 5
         assert executor._prefix.isalnum()
 
-    def test_random_prefix_is_unique(self, tmp_path):
+    def test_random_prefix_is_unique(self):
         from cluster_api.config import ClusterConfig
 
-        config = ClusterConfig(work_dir=str(tmp_path / "logs"))
+        config = ClusterConfig()
         a = LocalExecutor(config)
         b = LocalExecutor(config)
         assert a._prefix != b._prefix
@@ -137,9 +135,12 @@ class TestPrefix:
 
 class TestCancelAll:
 
-    async def test_cancel_all(self, default_config):
+    async def test_cancel_all(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
-        job = await executor.submit(command="sleep 60", name="sleeper")
+        job = await executor.submit(
+            command="sleep 60", name="sleeper",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
         assert not job.is_terminal
 
         await executor.cancel_all()

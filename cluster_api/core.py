@@ -33,8 +33,7 @@ class Executor(abc.ABC):
     def __init__(self, config: ClusterConfig) -> None:
         self.config = config
         self._jobs: dict[str, JobRecord] = {}
-        self._work_dir = Path(config.work_dir).expanduser().resolve()
-        self._work_dir.mkdir(parents=True, exist_ok=True)
+        self._work_dir = Path.cwd()
         if config.job_name_prefix:
             self._prefix = config.job_name_prefix
         else:

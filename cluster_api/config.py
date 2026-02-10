@@ -49,7 +49,6 @@ class ClusterConfig:
     script_epilogue: list[str] = field(default_factory=list)
     extra_directives: list[str] = field(default_factory=list)
     directives_skip: list[str] = field(default_factory=list)
-    work_dir: str = "."
     lsf_units: str = "MB"
     use_stdin: bool = False
     job_name_prefix: str | None = None

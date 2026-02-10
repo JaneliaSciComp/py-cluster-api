@@ -52,7 +52,8 @@ class LocalExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        script_path = write_script(self._work_dir, script, name, self._script_counter)
+        job_work_dir = Path(resources.work_dir) if resources and resources.work_dir else self._work_dir
+        script_path = write_script(job_work_dir, script, name, self._script_counter)
 
         full_env = {**os.environ, **(env or {})}
 

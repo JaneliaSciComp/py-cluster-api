@@ -66,6 +66,7 @@ def write_script(directory: Path, content: str, name: str, counter: int) -> str:
 
     The file is named ``{safe_name}.{counter}.sh`` and made executable.
     """
+    directory.mkdir(parents=True, exist_ok=True)
     safe_name = re.sub(r"[^\w\-.]", "_", name)
     script_path = directory / f"{safe_name}.{counter}.sh"
     script_path.write_text(content)
