@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import os
 from datetime import datetime, timezone
@@ -29,7 +30,7 @@ class LocalExecutor(Executor):
         super().__init__(config)
         self._processes: dict[str, asyncio.subprocess.Process] = {}
         self._next_id = 1
-        self._script_counter = 0
+        self._script_counter = itertools.count(1)
 
     def build_header(
         self, name: str, resources: ResourceSpec | None = None
@@ -51,8 +52,7 @@ class LocalExecutor(Executor):
         """Render script, write to disk, run as a background subprocess."""
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
-        self._script_counter += 1
-        script_path = write_script(resources.work_dir, script, name, self._script_counter)
+        script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
         full_env = {**os.environ, **(env or {})}
 

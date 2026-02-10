@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import itertools
 import json
 import logging
 import math
@@ -79,7 +80,7 @@ class LSFExecutor(Executor):
     def __init__(self, config: ClusterConfig) -> None:
         super().__init__(config)
         self._lsf_units = config.lsf_units
-        self._script_counter = 0
+        self._script_counter = itertools.count(1)
 
     def build_header(
         self, name: str, resources: ResourceSpec | None = None
@@ -183,8 +184,7 @@ class LSFExecutor(Executor):
         """Render script, write to disk, submit via bsub."""
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
-        self._script_counter += 1
-        script_path = write_script(resources.work_dir, script, name, self._script_counter)
+        script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
         out = await self._bsub(script_path, None, env)
         return self._job_id_from_submit_output(out), script_path
@@ -205,8 +205,7 @@ class LSFExecutor(Executor):
         """Render script, rewrite for array syntax, submit via bsub."""
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
-        self._script_counter += 1
-        script_path = write_script(resources.work_dir, script, name, self._script_counter)
+        script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
         array_spec = f"{array_range[0]}-{array_range[1]}"
         if max_concurrent is not None:
