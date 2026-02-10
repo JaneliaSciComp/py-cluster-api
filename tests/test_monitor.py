@@ -7,18 +7,19 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from cluster_api._types import JobExitCondition, JobRecord, JobStatus
+from cluster_api._types import JobExitCondition, JobRecord, JobStatus, ResourceSpec
 from cluster_api.executors.local import LocalExecutor
 from cluster_api.monitor import JobMonitor
 
 
 class TestMonitorPollLoop:
 
-    async def test_monitor_fires_callback(self, default_config):
+    async def test_monitor_fires_callback(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.2)
 
-        job = await executor.submit(command="echo hello", name="mon-test")
+        job = await executor.submit(command="echo hello", name="mon-test",
+                                    resources=ResourceSpec(work_dir=work_dir))
 
         results = []
         job.on_success(lambda j: results.append(j.job_id))
@@ -34,11 +35,12 @@ class TestMonitorPollLoop:
         assert results[0] == job.job_id
 
 
-    async def test_wait_for_timeout(self, default_config):
+    async def test_wait_for_timeout(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.2)
 
-        job = await executor.submit(command="sleep 60", name="timeout-test")
+        job = await executor.submit(command="sleep 60", name="timeout-test",
+                                    resources=ResourceSpec(work_dir=work_dir))
 
         await monitor.start()
         try:
@@ -49,11 +51,12 @@ class TestMonitorPollLoop:
             await executor.cancel(job.job_id)
 
 
-    async def test_async_callback(self, default_config):
+    async def test_async_callback(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.2)
 
-        job = await executor.submit(command="echo hello", name="async-cb")
+        job = await executor.submit(command="echo hello", name="async-cb",
+                                    resources=ResourceSpec(work_dir=work_dir))
 
         results = []
 
@@ -72,12 +75,14 @@ class TestMonitorPollLoop:
         assert len(results) == 1
 
 
-    async def test_multiple_jobs(self, default_config):
+    async def test_multiple_jobs(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
         monitor = JobMonitor(executor, poll_interval=0.2)
 
-        job1 = await executor.submit(command="echo one", name="multi1")
-        job2 = await executor.submit(command="echo two", name="multi2")
+        job1 = await executor.submit(command="echo one", name="multi1",
+                                     resources=ResourceSpec(work_dir=work_dir))
+        job2 = await executor.submit(command="echo two", name="multi2",
+                                     resources=ResourceSpec(work_dir=work_dir))
 
         results = []
         job1.on_success(lambda j: results.append("job1"))
