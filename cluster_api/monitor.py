@@ -150,10 +150,13 @@ class JobMonitor:
         """Wait until all given jobs reach a terminal state."""
         events = []
         for r in records:
-            if r.is_terminal:
-                continue
+            # Register event BEFORE checking is_terminal to avoid race:
+            # if _notify_waiters() fires between our check and registration,
+            # the event would never get set.
             if r.job_id not in self._completion_events:
                 self._completion_events[r.job_id] = asyncio.Event()
+            if r.is_terminal:
+                continue
             events.append(self._completion_events[r.job_id])
 
         if not events:

@@ -97,6 +97,54 @@ class TestMonitorPollLoop:
         assert set(results) == {"job1", "job2"}
 
 
+    async def test_wait_for_already_terminal(self, default_config):
+        """wait_for must return immediately for jobs that are already terminal.
+
+        Regression test for the race condition where _notify_waiters() could
+        fire before the event was registered, causing wait_for to hang.
+        """
+        executor = LocalExecutor(default_config)
+        monitor = JobMonitor(executor, poll_interval=0.2)
+
+        record = JobRecord(
+            job_id="done-1", name="test-done", command="echo done",
+            status=JobStatus.DONE,
+        )
+        executor._jobs["done-1"] = record
+
+        await monitor.start()
+        try:
+            # Should return immediately, not hang
+            await monitor.wait_for(record, timeout=1.0)
+        finally:
+            await monitor.stop()
+
+
+    async def test_wait_for_becomes_terminal_after_registration(self, default_config):
+        """Event registered before terminal check ensures _notify_waiters can set it."""
+        executor = LocalExecutor(default_config)
+        monitor = JobMonitor(executor, poll_interval=0.1)
+
+        record = JobRecord(
+            job_id="race-1", name="test-race", command="echo race",
+            status=JobStatus.RUNNING,
+        )
+        executor._jobs["race-1"] = record
+
+        await monitor.start()
+        try:
+            # Transition to terminal shortly after wait_for registers the event
+            async def mark_done():
+                await asyncio.sleep(0.05)
+                record.status = JobStatus.DONE
+
+            asyncio.create_task(mark_done())
+            await monitor.wait_for(record, timeout=3.0)
+            assert record.status == JobStatus.DONE
+        finally:
+            await monitor.stop()
+
+
 class TestZombieDetection:
 
     async def test_zombie_detected(self, default_config):
