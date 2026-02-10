@@ -12,6 +12,7 @@ from typing import Any
 from .._types import JobStatus, ResourceSpec
 from ..config import ClusterConfig
 from ..core import Executor
+from ..script import render_script, write_script
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class LocalExecutor(Executor):
         super().__init__(config)
         self._processes: dict[str, asyncio.subprocess.Process] = {}
         self._next_id = 1
+        self._script_counter = 0
 
     def build_header(
         self, name: str, resources: ResourceSpec | None = None
@@ -37,13 +39,21 @@ class LocalExecutor(Executor):
 
     async def _submit_job(
         self,
-        script_path: str,
+        command: str,
         name: str,
+        resources: ResourceSpec | None = None,
+        prologue: list[str] | None = None,
+        epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
         *,
         cwd: str | None = None,
-    ) -> str:
-        """Run script as a background subprocess."""
+    ) -> tuple[str, str | None]:
+        """Render script, write to disk, run as a background subprocess."""
+        header = self.build_header(name, resources)
+        script = render_script(self.config, command, header, prologue, epilogue)
+        self._script_counter += 1
+        script_path = write_script(self._log_dir, script, name, self._script_counter)
+
         full_env = {**os.environ, **(env or {})}
 
         proc = await asyncio.create_subprocess_exec(
@@ -57,7 +67,7 @@ class LocalExecutor(Executor):
         job_id = str(self._next_id)
         self._next_id += 1
         self._processes[job_id] = proc
-        return job_id
+        return job_id, script_path
 
     def _build_status_args(self) -> list[str]:
         # Not used for local executor; poll() is overridden

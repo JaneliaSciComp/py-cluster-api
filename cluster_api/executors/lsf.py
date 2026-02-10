@@ -14,6 +14,7 @@ from .._types import JobStatus, ResourceSpec
 from ..config import ClusterConfig, parse_memory_bytes
 from ..core import Executor
 from ..exceptions import ClusterAPIError
+from ..script import render_script, write_script
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ class LSFExecutor(Executor):
     def __init__(self, config: ClusterConfig) -> None:
         super().__init__(config)
         self._lsf_units = config.lsf_units
+        self._script_counter = 0
 
     def build_header(
         self, name: str, resources: ResourceSpec | None = None
@@ -171,27 +173,43 @@ class LSFExecutor(Executor):
 
     async def _submit_job(
         self,
-        script_path: str,
+        command: str,
         name: str,
+        resources: ResourceSpec | None = None,
+        prologue: list[str] | None = None,
+        epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
         *,
         cwd: str | None = None,
-    ) -> str:
-        """Submit via bsub with stdin mode support (cwd handled by #BSUB -cwd)."""
+    ) -> tuple[str, str | None]:
+        """Render script, write to disk, submit via bsub."""
+        header = self.build_header(name, resources)
+        script = render_script(self.config, command, header, prologue, epilogue)
+        self._script_counter += 1
+        script_path = write_script(self._log_dir, script, name, self._script_counter)
+
         out = await self._bsub(script_path, None, env)
-        return self._job_id_from_submit_output(out)
+        return self._job_id_from_submit_output(out), script_path
 
     async def _submit_array_job(
         self,
-        script_path: str,
+        command: str,
         name: str,
         array_range: tuple[int, int],
+        resources: ResourceSpec | None = None,
+        prologue: list[str] | None = None,
+        epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
         max_concurrent: int | None = None,
         *,
         cwd: str | None = None,
-    ) -> str:
-        """Submit an array job with -J 'name[start-end]' (cwd handled by #BSUB -cwd)."""
+    ) -> tuple[str, str | None]:
+        """Render script, rewrite for array syntax, submit via bsub."""
+        header = self.build_header(name, resources)
+        script = render_script(self.config, command, header, prologue, epilogue)
+        self._script_counter += 1
+        script_path = write_script(self._log_dir, script, name, self._script_counter)
+
         array_spec = f"{array_range[0]}-{array_range[1]}"
         if max_concurrent is not None:
             array_spec += f"%{max_concurrent}"
@@ -212,7 +230,7 @@ class LSFExecutor(Executor):
             f.write(content)
 
         out = await self._bsub(script_path, content, env)
-        return self._job_id_from_submit_output(out)
+        return self._job_id_from_submit_output(out), script_path
 
     def _build_status_args(self) -> list[str]:
         """Build bjobs command with JSON output."""

@@ -19,14 +19,6 @@ from ._types import ArrayElement, JobRecord, JobStatus, ResourceSpec
 
 logger = logging.getLogger(__name__)
 
-_SCRIPT_TEMPLATE = """\
-%(shebang)s
-%(job_header)s
-%(prologue)s
-%(command)s
-%(epilogue)s
-"""
-
 _ARRAY_ELEMENT_RE = re.compile(r"^(.+)\[(\d+)\]$")
 
 
@@ -37,12 +29,10 @@ class Executor(abc.ABC):
     cancel_command: str
     status_command: str
     job_id_regexp: str = r"(?P<job_id>\d+)"
-    directive_prefix: str = ""
 
     def __init__(self, config: ClusterConfig) -> None:
         self.config = config
         self._jobs: dict[str, JobRecord] = {}
-        self._script_counter = 0
         self._log_dir = Path(config.log_directory).expanduser()
         self._log_dir.mkdir(parents=True, exist_ok=True)
         if config.job_name_prefix:
@@ -52,52 +42,6 @@ class Executor(abc.ABC):
             # see each other's jobs when polling by name.
             alphabet = string.ascii_lowercase + string.digits
             self._prefix = "".join(secrets.choice(alphabet) for _ in range(5))
-
-    # --- Script rendering ---
-
-    def render_script(
-        self,
-        command: str,
-        name: str,
-        resources: ResourceSpec | None = None,
-        prologue: list[str] | None = None,
-        epilogue: list[str] | None = None,
-    ) -> str:
-        """Render a job script from the template."""
-        header_lines = self.build_header(name, resources)
-        # Filter via directives_skip
-        skip = set(self.config.directives_skip)
-        if skip:
-            header_lines = [
-                line
-                for line in header_lines
-                if not any(s in line for s in skip)
-            ]
-        # Extend with extra_directives
-        header_lines.extend(self.config.extra_directives)
-
-        all_prologue = list(self.config.script_prologue)
-        if prologue:
-            all_prologue.extend(prologue)
-
-        all_epilogue = list(self.config.script_epilogue)
-        if epilogue:
-            all_epilogue.extend(epilogue)
-
-        return _SCRIPT_TEMPLATE % {
-            "shebang": self.config.shebang,
-            "job_header": "\n".join(header_lines),
-            "prologue": "\n".join(all_prologue),
-            "command": command,
-            "epilogue": "\n".join(all_epilogue),
-        }
-
-    @abc.abstractmethod
-    def build_header(
-        self, name: str, resources: ResourceSpec | None = None
-    ) -> list[str]:
-        """Build scheduler-specific directive lines."""
-        ...
 
     # --- Submission ---
 
@@ -113,11 +57,11 @@ class Executor(abc.ABC):
     ) -> JobRecord:
         """Submit a job to the scheduler."""
         full_name = f"{self._prefix}-{name}"
-        script = self.render_script(command, full_name, resources, prologue, epilogue)
-        script_path = self._write_script(script, full_name)
 
         cwd = resources.work_dir if resources else None
-        job_id = await self._submit_job(script_path, full_name, env, cwd=cwd)
+        job_id, script_path = await self._submit_job(
+            command, full_name, resources, prologue, epilogue, env, cwd=cwd,
+        )
 
         record = JobRecord(
             job_id=job_id,
@@ -147,12 +91,11 @@ class Executor(abc.ABC):
     ) -> JobRecord:
         """Submit a job array to the scheduler."""
         full_name = f"{self._prefix}-{name}"
-        script = self.render_script(command, full_name, resources, prologue, epilogue)
-        script_path = self._write_script(script, full_name)
 
         cwd = resources.work_dir if resources else None
-        job_id = await self._submit_array_job(
-            script_path, full_name, array_range, env, max_concurrent, cwd=cwd
+        job_id, script_path = await self._submit_array_job(
+            command, full_name, array_range, resources, prologue, epilogue,
+            env, max_concurrent, cwd=cwd,
         )
 
         meta = {**(metadata or {}), "array_range": array_range}
@@ -176,43 +119,42 @@ class Executor(abc.ABC):
         )
         return record
 
+    @abc.abstractmethod
     async def _submit_job(
         self,
-        script_path: str,
+        command: str,
         name: str,
+        resources: ResourceSpec | None = None,
+        prologue: list[str] | None = None,
+        epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
         *,
         cwd: str | None = None,
-    ) -> str:
-        """Submit a script and return the job ID. Override for stdin submission."""
-        out = await self._call(
-            [self.submit_command, script_path],
-            env=env,
-            timeout=self.config.command_timeout,
-        )
-        return self._job_id_from_submit_output(out)
+    ) -> tuple[str, str | None]:
+        """Submit a single job.
+
+        Returns ``(job_id, script_path)`` where *script_path* may be
+        ``None`` for executors that don't write scripts to disk.
+        """
+        ...
 
     async def _submit_array_job(
         self,
-        script_path: str,
+        command: str,
         name: str,
         array_range: tuple[int, int],
+        resources: ResourceSpec | None = None,
+        prologue: list[str] | None = None,
+        epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
         max_concurrent: int | None = None,
         *,
         cwd: str | None = None,
-    ) -> str:
+    ) -> tuple[str, str | None]:
         """Submit an array job. Override in subclasses."""
-        return await self._submit_job(script_path, name, env, cwd=cwd)
-
-    def _write_script(self, script_content: str, name: str) -> str:
-        """Write job script to log directory and return its path."""
-        safe_name = re.sub(r"[^\w\-.]", "_", name)
-        self._script_counter += 1
-        script_path = self._log_dir / f"{safe_name}.{self._script_counter}.sh"
-        script_path.write_text(script_content)
-        script_path.chmod(0o755)
-        return str(script_path)
+        return await self._submit_job(
+            command, name, resources, prologue, epilogue, env, cwd=cwd,
+        )
 
     def _job_id_from_submit_output(self, out: str) -> str:
         """Extract job ID from submission output using regex."""

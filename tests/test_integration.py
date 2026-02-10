@@ -264,7 +264,9 @@ class TestLSFNoMemory:
         )
 
         # Verify the generated script has no memory directives
-        script = executor.render_script("echo hello", "no-mem-test")
+        from cluster_api.script import render_script
+        header = executor.build_header("no-mem-test")
+        script = render_script(executor.config, "echo hello", header)
         assert "-M" not in script
         assert "rusage" not in script
 

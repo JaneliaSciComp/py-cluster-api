@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from cluster_api._types import JobStatus
 from cluster_api.exceptions import CommandFailedError, CommandTimeoutError, SubmitError
 from cluster_api.executors.local import LocalExecutor
+from cluster_api.script import render_script, write_script
 
 
 class TestRenderScript:
     def test_basic_script(self, default_config):
-        executor = LocalExecutor(default_config)
-        script = executor.render_script(
+        script = render_script(
+            default_config,
             command="echo hello",
-            name="test-job",
+            header_lines=["# LOCAL Job: test-job"],
         )
         assert "#!/bin/bash" in script
         assert "echo hello" in script
@@ -22,10 +25,10 @@ class TestRenderScript:
 
     def test_prologue_epilogue(self, default_config):
         default_config.script_prologue = ["module load python"]
-        executor = LocalExecutor(default_config)
-        script = executor.render_script(
+        script = render_script(
+            default_config,
             command="python run.py",
-            name="test-job",
+            header_lines=["# LOCAL Job: test-job"],
             prologue=["export FOO=bar"],
             epilogue=["echo done"],
         )
@@ -36,26 +39,29 @@ class TestRenderScript:
 
     def test_directives_skip(self, default_config):
         default_config.directives_skip = ["LOCAL"]
-        executor = LocalExecutor(default_config)
-        script = executor.render_script(
+        script = render_script(
+            default_config,
             command="echo hello",
-            name="test-job",
+            header_lines=["# LOCAL Job: test-job"],
         )
         assert "# LOCAL" not in script
 
     def test_extra_directives(self, default_config):
         default_config.extra_directives = ["# EXTRA directive1"]
-        executor = LocalExecutor(default_config)
-        script = executor.render_script(
+        script = render_script(
+            default_config,
             command="echo hello",
-            name="test-job",
+            header_lines=["# LOCAL Job: test-job"],
         )
         assert "# EXTRA directive1" in script
 
     def test_custom_shebang(self, default_config):
         default_config.shebang = "#!/usr/bin/env bash"
-        executor = LocalExecutor(default_config)
-        script = executor.render_script(command="echo hi", name="test")
+        script = render_script(
+            default_config,
+            command="echo hi",
+            header_lines=["# LOCAL Job: test"],
+        )
         assert "#!/usr/bin/env bash" in script
 
 
@@ -99,8 +105,9 @@ class TestCallTimeout:
 
 class TestWriteScript:
     def test_write_script(self, default_config):
-        executor = LocalExecutor(default_config)
-        path = executor._write_script("#!/bin/bash\necho hello", "my-job")
+        log_dir = Path(default_config.log_directory)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = write_script(log_dir, "#!/bin/bash\necho hello", "my-job", 1)
         assert path.endswith(".sh")
         with open(path) as f:
             assert "echo hello" in f.read()
