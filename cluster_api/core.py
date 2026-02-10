@@ -207,8 +207,8 @@ class Executor(abc.ABC):
         args = self._build_status_args()
         try:
             out = await self._call(args, timeout=self.config.command_timeout)
-        except (ClusterAPIError, OSError):
-            logger.warning("Status query failed, skipping poll cycle")
+        except (ClusterAPIError, OSError) as e:
+            logger.warning("Status query failed, skipping poll cycle: %s", e, exc_info=True)
             return {jid: r.status for jid, r in self._jobs.items()}
 
         statuses = self._parse_job_statuses(out)

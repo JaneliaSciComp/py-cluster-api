@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -9,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 _MEMORY_UNITS = {
@@ -113,8 +116,11 @@ def load_config(
     if overrides:
         raw = {**raw, **overrides}
 
-    # Build ClusterConfig from the merged dict, ignoring unknown keys
+    # Build ClusterConfig from the merged dict, warning on unknown keys
     known_fields = {f.name for f in ClusterConfig.__dataclass_fields__.values()}
+    unknown = set(raw.keys()) - known_fields
+    if unknown:
+        logger.warning("Unknown config keys (ignored): %s", unknown)
     filtered = {k: v for k, v in raw.items() if k in known_fields}
 
     return ClusterConfig(**filtered)

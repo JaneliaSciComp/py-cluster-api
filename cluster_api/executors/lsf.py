@@ -26,6 +26,9 @@ _LSF_STATUS_MAP: dict[str, JobStatus] = {
     "DONE": JobStatus.DONE,
     "EXIT": JobStatus.FAILED,
     "ZOMBI": JobStatus.FAILED,
+    "UNKWN": JobStatus.UNKNOWN,
+    "WAIT": JobStatus.PENDING,
+    "PROV": JobStatus.PENDING,
     "USUSP": JobStatus.PENDING,
     "PSUSP": JobStatus.PENDING,
     "SSUSP": JobStatus.PENDING,
@@ -265,7 +268,10 @@ class LSFExecutor(Executor):
                 continue
 
             stat = rec.get("STAT", "").strip()
-            status = _LSF_STATUS_MAP.get(stat, JobStatus.UNKNOWN)
+            status = _LSF_STATUS_MAP.get(stat)
+            if status is None:
+                logger.warning("Unmapped LSF status: %r for job %s", stat, job_id)
+                status = JobStatus.UNKNOWN
 
             exit_code_str = str(rec.get("EXIT_CODE", "")).strip()
             exit_code = None

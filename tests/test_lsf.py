@@ -389,7 +389,7 @@ class TestParseLsfTime:
 
 class TestLsfStatusMap:
     def test_all_statuses_mapped(self):
-        expected = {"PEND", "RUN", "DONE", "EXIT", "ZOMBI", "USUSP", "PSUSP", "SSUSP"}
+        expected = {"PEND", "RUN", "DONE", "EXIT", "ZOMBI", "UNKWN", "WAIT", "PROV", "USUSP", "PSUSP", "SSUSP"}
         assert expected == set(_LSF_STATUS_MAP.keys())
 
 
