@@ -343,8 +343,8 @@ class TestArrayScriptRewriting:
                 resources=ResourceSpec(work_dir=work_dir),
             )
             stdin = mock_call.call_args.kwargs.get("stdin_data", "")
-            assert "stdout.%I.log" in stdin
-            assert "stderr.%I.log" in stdin
+            assert "stdout.%J.%I.log" in stdin
+            assert "stderr.%J.%I.log" in stdin
 
 
 class TestCancelByName:

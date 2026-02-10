@@ -91,7 +91,7 @@ class LocalExecutor(Executor):
 
             if proc.returncode is not None:
                 # Process finished — capture output to log files
-                await self._write_output_files(record.name, proc, record.resources or ResourceSpec())
+                await self._write_output_files(record.name, proc, record.resources or ResourceSpec(), job_id)
 
                 now = datetime.now(timezone.utc)
                 record.finish_time = now
@@ -124,17 +124,18 @@ class LocalExecutor(Executor):
 
     async def _write_output_files(
         self, job_name: str, proc: asyncio.subprocess.Process,
-        resources: ResourceSpec,
+        resources: ResourceSpec, job_id: str,
     ) -> None:
         """Write captured stdout/stderr to output files.
 
         Uses per-job paths from ResourceSpec if set, otherwise writes
-        ``stdout.log`` / ``stderr.log`` into the effective work directory.
+        ``stdout.{job_id}.log`` / ``stderr.{job_id}.log`` into the effective
+        work directory.
         """
         stdout_data, stderr_data = await proc.communicate()
         base = Path(resources.work_dir)
-        out_path = Path(resources.stdout_path) if resources.stdout_path else base / "stdout.log"
-        err_path = Path(resources.stderr_path) if resources.stderr_path else base / "stderr.log"
+        out_path = Path(resources.stdout_path) if resources.stdout_path else base / f"stdout.{job_id}.log"
+        err_path = Path(resources.stderr_path) if resources.stderr_path else base / f"stderr.{job_id}.log"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         err_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(stdout_data or b"")

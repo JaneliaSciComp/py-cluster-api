@@ -124,8 +124,8 @@ class TestLocalOutputFiles:
         await proc.wait()
         await executor.poll()
 
-        out_file = Path(work_dir) / "stdout.log"
-        err_file = Path(work_dir) / "stderr.log"
+        out_file = Path(work_dir) / f"stdout.{job.job_id}.log"
+        err_file = Path(work_dir) / f"stderr.{job.job_id}.log"
         assert out_file.exists()
         assert err_file.exists()
         assert out_file.read_text().strip() == "hello"
@@ -142,8 +142,8 @@ class TestLocalOutputFiles:
         await proc.wait()
         await executor.poll()
 
-        out_file = Path(work_dir) / "stdout.log"
-        err_file = Path(work_dir) / "stderr.log"
+        out_file = Path(work_dir) / f"stdout.{job.job_id}.log"
+        err_file = Path(work_dir) / f"stderr.{job.job_id}.log"
         assert out_file.read_text() == ""
         assert err_file.read_text().strip() == "oops"
 
@@ -158,7 +158,7 @@ class TestLocalOutputFiles:
         await proc.wait()
         await executor.poll()
 
-        err_file = Path(work_dir) / "stderr.log"
+        err_file = Path(work_dir) / f"stderr.{job.job_id}.log"
         assert err_file.read_text().strip() == "failing"
         assert job.status == JobStatus.FAILED
 
@@ -179,7 +179,7 @@ class TestLocalWorkDir:
         await proc.wait()
         await executor.poll()
 
-        out_file = work_dir / "stdout.log"
+        out_file = work_dir / f"stdout.{job.job_id}.log"
         assert out_file.read_text().strip() == str(work_dir)
 
     async def test_default_cwd_without_work_dir(self, default_config, monkeypatch, tmp_path):
@@ -191,7 +191,7 @@ class TestLocalWorkDir:
         await proc.wait()
         await executor.poll()
 
-        out_file = tmp_path / "stdout.log"
+        out_file = tmp_path / f"stdout.{job.job_id}.log"
         # Without work_dir, inherits the current process cwd
         assert out_file.read_text().strip() == str(tmp_path)
 

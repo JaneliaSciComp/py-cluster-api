@@ -91,8 +91,8 @@ class LSFExecutor(Executor):
 
         lines.append(f"{p} -J {name}")
 
-        out = resources.stdout_path or f"{resources.work_dir}/stdout.log"
-        err = resources.stderr_path or f"{resources.work_dir}/stderr.log"
+        out = resources.stdout_path or f"{resources.work_dir}/stdout.%J.log"
+        err = resources.stderr_path or f"{resources.work_dir}/stderr.%J.log"
         lines.append(f"{p} -o {out}")
         lines.append(f"{p} -e {err}")
 
@@ -222,8 +222,8 @@ class LSFExecutor(Executor):
                 line = line.replace(f"-J {name}", f"-J {array_name}")
                 line = line.replace(f"{name}.out", f"{name}.%I.out")
                 line = line.replace(f"{name}.err", f"{name}.%I.err")
-                line = line.replace("stdout.log", "stdout.%I.log")
-                line = line.replace("stderr.log", "stderr.%I.log")
+                line = line.replace("stdout.%J.log", "stdout.%J.%I.log")
+                line = line.replace("stderr.%J.log", "stderr.%J.%I.log")
             new_lines.append(line)
         content = "".join(new_lines)
         with open(script_path, "w") as f:
