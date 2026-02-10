@@ -106,7 +106,7 @@ Configuration is loaded from YAML with optional profiles. The search order is:
 ```yaml
 executor: local
 poll_interval: 10
-log_directory: ./logs
+work_dir: .
 job_name_prefix: "capi"
 
 profiles:
@@ -135,7 +135,7 @@ profiles:
 | `queue` | `None` | Default queue/partition |
 | `account` | `None` | Account/project for billing |
 | `poll_interval` | `10.0` | Seconds between status polls |
-| `log_directory` | `"./logs"` | Where job scripts and logs are written |
+| `work_dir` | `"."` | Working directory for scripts and output (`stdout.log` / `stderr.log`) |
 | `job_name_prefix` | `"capi"` | Prefix for all job names |
 | `shebang` | `"#!/bin/bash"` | Script shebang line |
 | `script_prologue` | `[]` | Lines inserted before the command |

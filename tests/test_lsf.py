@@ -83,7 +83,7 @@ class TestBuildHeader:
 
         config = ClusterConfig(
             executor="lsf",
-            log_directory=str(tmp_path / "logs"),
+            work_dir=str(tmp_path / "logs"),
             job_name_prefix="test",
             lsf_units="MB",
         )
@@ -108,7 +108,7 @@ class TestBuildHeader:
 
         config = ClusterConfig(
             executor="lsf",
-            log_directory=str(tmp_path / "logs"),
+            work_dir=str(tmp_path / "logs"),
             job_name_prefix="test",
             lsf_units="MB",
             gpus=1,
@@ -339,8 +339,8 @@ class TestArrayScriptRewriting:
                 array_range=(1, 10),
             )
             stdin = mock_call.call_args.kwargs.get("stdin_data", "")
-            assert "%I.out" in stdin
-            assert "%I.err" in stdin
+            assert "stdout.%I.log" in stdin
+            assert "stderr.%I.log" in stdin
 
 
 class TestCancelByName:

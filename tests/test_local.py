@@ -100,9 +100,9 @@ class TestLocalOutputFiles:
         await proc.wait()
         await executor.poll()
 
-        log_dir = Path(default_config.log_directory)
-        out_file = log_dir / f"{job.name}.out"
-        err_file = log_dir / f"{job.name}.err"
+        work_dir = Path(default_config.work_dir)
+        out_file = work_dir / "stdout.log"
+        err_file = work_dir / "stderr.log"
         assert out_file.exists()
         assert err_file.exists()
         assert out_file.read_text().strip() == "hello"
@@ -116,9 +116,9 @@ class TestLocalOutputFiles:
         await proc.wait()
         await executor.poll()
 
-        log_dir = Path(default_config.log_directory)
-        out_file = log_dir / f"{job.name}.out"
-        err_file = log_dir / f"{job.name}.err"
+        work_dir = Path(default_config.work_dir)
+        out_file = work_dir / "stdout.log"
+        err_file = work_dir / "stderr.log"
         assert out_file.read_text() == ""
         assert err_file.read_text().strip() == "oops"
 
@@ -132,8 +132,8 @@ class TestLocalOutputFiles:
         await proc.wait()
         await executor.poll()
 
-        log_dir = Path(default_config.log_directory)
-        err_file = log_dir / f"{job.name}.err"
+        work_dir = Path(default_config.work_dir)
+        err_file = work_dir / "stderr.log"
         assert err_file.read_text().strip() == "failing"
         assert job.status == JobStatus.FAILED
 
@@ -154,8 +154,7 @@ class TestLocalWorkDir:
         await proc.wait()
         await executor.poll()
 
-        log_dir = Path(default_config.log_directory)
-        out_file = log_dir / f"{job.name}.out"
+        out_file = work_dir / "stdout.log"
         assert out_file.read_text().strip() == str(work_dir)
 
     async def test_default_cwd_without_work_dir(self, default_config):
@@ -166,8 +165,8 @@ class TestLocalWorkDir:
         await proc.wait()
         await executor.poll()
 
-        log_dir = Path(default_config.log_directory)
-        out_file = log_dir / f"{job.name}.out"
+        work_dir = Path(default_config.work_dir)
+        out_file = work_dir / "stdout.log"
         # Without work_dir, inherits the current process cwd
         assert out_file.read_text().strip() == str(Path.cwd())
 

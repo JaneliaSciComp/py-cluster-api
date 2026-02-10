@@ -9,10 +9,10 @@ from cluster_api.config import ClusterConfig
 
 @pytest.fixture
 def default_config(tmp_path):
-    """A default ClusterConfig with log_directory set to a temp dir."""
+    """A default ClusterConfig with work_dir set to a temp dir."""
     return ClusterConfig(
         executor="local",
-        log_directory=str(tmp_path / "logs"),
+        work_dir=str(tmp_path / "logs"),
         job_name_prefix="test",
         poll_interval=0.5,
         command_timeout=10.0,
@@ -26,7 +26,7 @@ def lsf_config(tmp_path):
     """An LSF ClusterConfig for testing."""
     return ClusterConfig(
         executor="lsf",
-        log_directory=str(tmp_path / "logs"),
+        work_dir=str(tmp_path / "logs"),
         job_name_prefix="test",
         queue="normal",
         memory="8 GB",

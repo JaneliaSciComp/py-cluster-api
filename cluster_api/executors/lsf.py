@@ -92,9 +92,11 @@ class LSFExecutor(Executor):
 
         stdout_path = resources and resources.stdout_path
         stderr_path = resources and resources.stderr_path
-        log_dir = self.config.log_directory
-        lines.append(f"{p} -o {stdout_path or f'{log_dir}/{name}.out'}")
-        lines.append(f"{p} -e {stderr_path or f'{log_dir}/{name}.err'}")
+        effective_work_dir = (resources and resources.work_dir) or str(self._work_dir)
+        out = stdout_path or f"{effective_work_dir}/stdout.log"
+        err = stderr_path or f"{effective_work_dir}/stderr.log"
+        lines.append(f"{p} -o {out}")
+        lines.append(f"{p} -e {err}")
 
         # Queue
         queue = (resources and resources.queue) or self.config.queue
@@ -186,7 +188,7 @@ class LSFExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        script_path = write_script(self._log_dir, script, name, self._script_counter)
+        script_path = write_script(self._work_dir, script, name, self._script_counter)
 
         out = await self._bsub(script_path, None, env)
         return self._job_id_from_submit_output(out), script_path
@@ -208,7 +210,7 @@ class LSFExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        script_path = write_script(self._log_dir, script, name, self._script_counter)
+        script_path = write_script(self._work_dir, script, name, self._script_counter)
 
         array_spec = f"{array_range[0]}-{array_range[1]}"
         if max_concurrent is not None:
@@ -224,6 +226,8 @@ class LSFExecutor(Executor):
                 line = line.replace(f"-J {name}", f"-J {array_name}")
                 line = line.replace(f"{name}.out", f"{name}.%I.out")
                 line = line.replace(f"{name}.err", f"{name}.%I.err")
+                line = line.replace("stdout.log", "stdout.%I.log")
+                line = line.replace("stderr.log", "stderr.%I.log")
             new_lines.append(line)
         content = "".join(new_lines)
         with open(script_path, "w") as f:

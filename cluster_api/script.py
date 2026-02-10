@@ -61,13 +61,13 @@ def render_script(
     }
 
 
-def write_script(log_dir: Path, content: str, name: str, counter: int) -> str:
-    """Write a job script to *log_dir* and return the path as a string.
+def write_script(directory: Path, content: str, name: str, counter: int) -> str:
+    """Write a job script to *directory* and return the path as a string.
 
     The file is named ``{safe_name}.{counter}.sh`` and made executable.
     """
     safe_name = re.sub(r"[^\w\-.]", "_", name)
-    script_path = log_dir / f"{safe_name}.{counter}.sh"
+    script_path = directory / f"{safe_name}.{counter}.sh"
     script_path.write_text(content)
     script_path.chmod(0o755)
     return str(script_path)

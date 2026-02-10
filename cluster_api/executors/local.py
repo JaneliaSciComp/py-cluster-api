@@ -52,7 +52,7 @@ class LocalExecutor(Executor):
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         self._script_counter += 1
-        script_path = write_script(self._log_dir, script, name, self._script_counter)
+        script_path = write_script(self._work_dir, script, name, self._script_counter)
 
         full_env = {**os.environ, **(env or {})}
 
@@ -126,14 +126,15 @@ class LocalExecutor(Executor):
         self, job_name: str, proc: asyncio.subprocess.Process,
         resources: ResourceSpec | None = None,
     ) -> None:
-        """Write captured stdout/stderr to log files.
+        """Write captured stdout/stderr to output files.
 
-        Uses per-job paths from ResourceSpec if set, otherwise falls back
-        to the global log directory.
+        Uses per-job paths from ResourceSpec if set, otherwise writes
+        ``stdout.log`` / ``stderr.log`` into the effective work directory.
         """
         stdout_data, stderr_data = await proc.communicate()
-        out_path = Path(resources.stdout_path) if resources and resources.stdout_path else self._log_dir / f"{job_name}.out"
-        err_path = Path(resources.stderr_path) if resources and resources.stderr_path else self._log_dir / f"{job_name}.err"
+        base = Path(resources.work_dir) if resources and resources.work_dir else self._work_dir
+        out_path = Path(resources.stdout_path) if resources and resources.stdout_path else base / "stdout.log"
+        err_path = Path(resources.stderr_path) if resources and resources.stderr_path else base / "stderr.log"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         err_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(stdout_data or b"")

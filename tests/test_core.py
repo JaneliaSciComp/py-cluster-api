@@ -105,9 +105,9 @@ class TestCallTimeout:
 
 class TestWriteScript:
     def test_write_script(self, default_config):
-        log_dir = Path(default_config.log_directory)
-        log_dir.mkdir(parents=True, exist_ok=True)
-        path = write_script(log_dir, "#!/bin/bash\necho hello", "my-job", 1)
+        work_dir = Path(default_config.work_dir)
+        work_dir.mkdir(parents=True, exist_ok=True)
+        path = write_script(work_dir, "#!/bin/bash\necho hello", "my-job", 1)
         assert path.endswith(".sh")
         with open(path) as f:
             assert "echo hello" in f.read()
@@ -121,7 +121,7 @@ class TestPrefix:
     def test_random_prefix_when_none(self, tmp_path):
         from cluster_api.config import ClusterConfig
 
-        config = ClusterConfig(log_directory=str(tmp_path / "logs"))
+        config = ClusterConfig(work_dir=str(tmp_path / "logs"))
         executor = LocalExecutor(config)
         assert len(executor._prefix) == 5
         assert executor._prefix.isalnum()
@@ -129,7 +129,7 @@ class TestPrefix:
     def test_random_prefix_is_unique(self, tmp_path):
         from cluster_api.config import ClusterConfig
 
-        config = ClusterConfig(log_directory=str(tmp_path / "logs"))
+        config = ClusterConfig(work_dir=str(tmp_path / "logs"))
         a = LocalExecutor(config)
         b = LocalExecutor(config)
         assert a._prefix != b._prefix
