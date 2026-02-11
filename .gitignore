@@ -21,6 +21,9 @@ htmlcov/
 # Logs
 logs/
 
+# Integration test artifacts
+.test_output/
+
 # Local cluster config for integration tests
 tests/cluster_config.yaml
 

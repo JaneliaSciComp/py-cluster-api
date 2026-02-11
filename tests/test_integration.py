@@ -26,10 +26,22 @@ if not shutil.which("bsub"):
     pytest.skip("LSF not available (bsub not on PATH)", allow_module_level=True)
 
 _CONFIG_PATH = Path(__file__).parent / "cluster_config.yaml"
+_OUTPUT_DIR = Path(__file__).resolve().parent.parent / ".test_output"
 
 
 @pytest.fixture
-def lsf_executor(tmp_path):
+def work_dir():
+    """Dedicated output directory for integration test scripts and logs.
+
+    Uses .test_output/ at the repo root (gitignored) so artifacts don't
+    clutter the working directory but remain available for post-run inspection.
+    """
+    _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    return str(_OUTPUT_DIR)
+
+
+@pytest.fixture
+def lsf_executor():
     """Create an LSF executor from tests/cluster_config.yaml (if present).
 
     The config file is gitignored so each developer can set cluster-specific
@@ -55,7 +67,7 @@ def monitor(lsf_executor):
 class TestLSFSubmitAndMonitor:
     """Basic submit → monitor → callback cycle on a real cluster."""
 
-    async def test_short_sleep_succeeds(self, lsf_executor, monitor):
+    async def test_short_sleep_succeeds(self, lsf_executor, monitor, work_dir):
         """Submit a 5s sleep, wait for it to complete, verify DONE status."""
         await monitor.start()
         try:
@@ -63,7 +75,7 @@ class TestLSFSubmitAndMonitor:
             job = await lsf_executor.submit(
                 command="sleep 5 && echo 'job finished'",
                 name="sleep-ok",
-                resources=ResourceSpec(cpus=1, memory="100 MB"),
+                resources=ResourceSpec(cpus=1, memory="100 MB", work_dir=work_dir),
             )
             job.on_success(lambda j: results.append(("success", j.job_id)))
             job.on_failure(lambda j: results.append(("failure", j.job_id)))
@@ -85,7 +97,7 @@ class TestLSFSubmitAndMonitor:
         finally:
             await monitor.stop()
 
-    async def test_failing_job(self, lsf_executor, monitor):
+    async def test_failing_job(self, lsf_executor, monitor, work_dir):
         """Submit a job that exits non-zero, verify FAILED status."""
         await monitor.start()
         try:
@@ -93,7 +105,7 @@ class TestLSFSubmitAndMonitor:
             job = await lsf_executor.submit(
                 command="echo 'about to fail' && exit 42",
                 name="fail-test",
-                resources=ResourceSpec(cpus=1, memory="100 MB"),
+                resources=ResourceSpec(cpus=1, memory="100 MB", work_dir=work_dir),
             )
             job.on_success(lambda j: results.append("success"))
             job.on_failure(lambda j: results.append("failure"))
@@ -112,7 +124,7 @@ class TestLSFSubmitAndMonitor:
         finally:
             await monitor.stop()
 
-    async def test_multiple_jobs(self, lsf_executor, monitor):
+    async def test_multiple_jobs(self, lsf_executor, monitor, work_dir):
         """Submit several jobs with different sleep times, wait for all."""
         await monitor.start()
         try:
@@ -123,7 +135,7 @@ class TestLSFSubmitAndMonitor:
                 job = await lsf_executor.submit(
                     command=f"sleep {sleep_sec} && echo 'done-{i}'",
                     name=f"multi-{i}",
-                    resources=ResourceSpec(cpus=1, memory="100 MB"),
+                    resources=ResourceSpec(cpus=1, memory="100 MB", work_dir=work_dir),
                 )
                 job.on_exit(
                     lambda j, idx=i: results.update({idx: j.status})
@@ -145,14 +157,14 @@ class TestLSFSubmitAndMonitor:
 class TestLSFCancel:
     """Test job cancellation on a real cluster."""
 
-    async def test_cancel_running_job(self, lsf_executor, monitor):
+    async def test_cancel_running_job(self, lsf_executor, monitor, work_dir):
         """Submit a long sleep, cancel it, verify KILLED status."""
         await monitor.start()
         try:
             job = await lsf_executor.submit(
                 command="sleep 300",
                 name="cancel-me",
-                resources=ResourceSpec(cpus=1, memory="100 MB"),
+                resources=ResourceSpec(cpus=1, memory="100 MB", work_dir=work_dir),
             )
             print(f"\nSubmitted job {job.job_id} ({job.name})")
 
@@ -182,7 +194,7 @@ class TestLSFCancel:
 class TestLSFJobArray:
     """Test job array submission on a real cluster."""
 
-    async def test_submit_array(self, lsf_executor, monitor):
+    async def test_submit_array(self, lsf_executor, monitor, work_dir):
         """Submit a small job array, wait for completion."""
         await monitor.start()
         try:
@@ -190,7 +202,7 @@ class TestLSFJobArray:
                 command="echo \"array element $LSB_JOBINDEX\" && sleep 3",
                 name="array-test",
                 array_range=(1, 3),
-                resources=ResourceSpec(cpus=1, memory="100 MB"),
+                resources=ResourceSpec(cpus=1, memory="100 MB", work_dir=work_dir),
             )
 
             results = []
@@ -213,7 +225,7 @@ class TestLSFJobArray:
 class TestLSFRichMetadata:
     """Verify that polling populates rich metadata fields."""
 
-    async def test_metadata_populated(self, lsf_executor, monitor):
+    async def test_metadata_populated(self, lsf_executor, monitor, work_dir):
         """Submit a job that uses some memory, verify metadata after completion."""
         await monitor.start()
         try:
@@ -225,7 +237,7 @@ class TestLSFRichMetadata:
                     "|| echo 'python not found, skipping' && sleep 5"
                 ),
                 name="metadata-test",
-                resources=ResourceSpec(cpus=1, memory="200 MB"),
+                resources=ResourceSpec(cpus=1, memory="200 MB", work_dir=work_dir),
             )
 
             print(f"\nSubmitted job {job.job_id} ({job.name})")
@@ -250,7 +262,7 @@ class TestLSFRichMetadata:
 class TestLSFNoMemory:
     """Verify jobs can be submitted without any memory requirement."""
 
-    async def test_no_memory_flags(self, tmp_path):
+    async def test_no_memory_flags(self, work_dir):
         """Submit with no memory in config or ResourceSpec — no -M or -R rusage."""
         config_path = str(_CONFIG_PATH) if _CONFIG_PATH.exists() else None
         executor = create_executor(
@@ -263,7 +275,7 @@ class TestLSFNoMemory:
 
         # Verify the generated script has no memory directives
         from cluster_api.script import render_script
-        header = executor.build_header("no-mem-test")
+        header = executor.build_header("no-mem-test", ResourceSpec(work_dir=work_dir))
         script = render_script(executor.config, "echo hello", header)
         assert "-M" not in script
         assert "rusage" not in script
@@ -275,6 +287,7 @@ class TestLSFNoMemory:
             job = await executor.submit(
                 command="sleep 3 && echo 'no memory limit'",
                 name="no-mem",
+                resources=ResourceSpec(work_dir=work_dir),
             )
 
             print(f"\nSubmitted job {job.job_id} ({job.name})")
