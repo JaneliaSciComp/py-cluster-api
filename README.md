@@ -187,19 +187,6 @@ Async polling loop that drives status updates and callback dispatch.
 
 Resource requirements: `cpus`, `memory`, `walltime`, `queue`, `account`, `work_dir`, `stdout_path`, `stderr_path`, `cluster_options`.
 
-### Log Files
-
-By default, each job gets uniquely named log files that include the job ID:
-
-| Executor | stdout | stderr |
-|---|---|---|
-| LSF | `stdout.%J.log` | `stderr.%J.log` |
-| LSF array | `stdout.%J.%I.log` | `stderr.%J.%I.log` |
-| Local | `stdout.{job_id}.log` | `stderr.{job_id}.log` |
-| Local array | `stdout.{job_id}.{index}.log` | `stderr.{job_id}.{index}.log` |
-
-Set `stdout_path` / `stderr_path` on `ResourceSpec` to override the defaults.
-
 ## Development
 
 See [docs/Development.md](docs/Development.md) for build instructions, testing, and release process.
