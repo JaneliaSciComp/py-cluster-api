@@ -35,7 +35,7 @@ pixi run check         # lint + test together
 | `test_config.py` | YAML loading, profiles, memory parsing | No |
 | `test_core.py` | Base `Executor` logic (submit, poll, cancel, zombies, arrays) | No — mocks `_call()` |
 | `test_lsf.py` | `LSFExecutor` header building, bsub submission, bjobs parsing, array rewriting | No — mocks `_call()` |
-| `test_local.py` | `LocalExecutor` end-to-end (submit, poll, output files, callbacks) | **Yes** — runs real bash subprocesses |
+| `test_local.py` | `LocalExecutor` end-to-end (submit, poll, output files, callbacks, array jobs) | **Yes** — runs real bash subprocesses |
 | `test_monitor.py` | `JobMonitor` polling loop, callback dispatch, zombie detection, purging | No — mocks `poll()` |
 | `test_integration.py` | Full LSF round-trips (submit, monitor, cancel, arrays, metadata) | **Yes** — requires a live LSF cluster |
 
@@ -114,6 +114,7 @@ Default log files include the job ID so each job gets unique output:
 | LSF | `stdout.%J.log` | `stderr.%J.log` |
 | LSF array | `stdout.%J.%I.log` | `stderr.%J.%I.log` |
 | Local | `stdout.{job_id}.log` | `stderr.{job_id}.log` |
+| Local array | `stdout.{job_id}.{index}.log` | `stderr.{job_id}.{index}.log` |
 
 Setting `stdout_path` / `stderr_path` on `ResourceSpec` overrides these defaults.
 
@@ -146,7 +147,7 @@ Terminal jobs are purged from memory after `completed_retention_minutes` (once a
 | `monitor.py` | `JobMonitor` — polling loop, callback dispatch, zombie/purge logic |
 | `exceptions.py` | `ClusterAPIError`, `CommandTimeoutError`, `CommandFailedError`, `SubmitError` |
 | `executors/lsf.py` | `LSFExecutor` — bsub/bjobs/bkill, header building, bjobs JSON parsing |
-| `executors/local.py` | `LocalExecutor` — asyncio subprocesses, stdout/stderr capture |
+| `executors/local.py` | `LocalExecutor` — asyncio subprocesses, stdout/stderr capture, array job simulation |
 
 ## Release
 

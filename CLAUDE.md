@@ -28,14 +28,14 @@ pixi run check        # lint + test
   - `monitor.py` — async polling loop + callback dispatch
   - `exceptions.py` — `ClusterAPIError`, `CommandTimeoutError`, `CommandFailedError`, `SubmitError`
   - `executors/lsf.py` — LSF executor (bsub/bjobs/bkill)
-  - `executors/local.py` — local subprocess executor (for testing)
+  - `executors/local.py` — local subprocess executor (for testing), including array job simulation
 - `tests/` — pytest tests; all async tests use pytest-asyncio with `asyncio_mode = "auto"`
 
 ## Log File Naming
 
 Default log files include the job ID for uniqueness:
 - **LSF**: `stdout.%J.log` / `stderr.%J.log` (`%J` = job ID); array jobs use `stdout.%J.%I.log` (`%I` = array index)
-- **Local**: `stdout.{job_id}.log` / `stderr.{job_id}.log`
+- **Local**: `stdout.{job_id}.log` / `stderr.{job_id}.log`; array jobs use `stdout.{job_id}.{index}.log` (`$ARRAY_INDEX` env var per element)
 
 Explicit `stdout_path` / `stderr_path` in `ResourceSpec` override these defaults.
 

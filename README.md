@@ -8,7 +8,7 @@ A Python library for submitting and monitoring jobs on HPC clusters. Supports ru
 
 - **Async-first** — built on `asyncio` for non-blocking job submission and monitoring
 - **LSF executor** — submit via `bsub`, monitor via `bjobs -json`, cancel via `bkill`
-- **Local executor** — run jobs as local subprocesses for development and testing
+- **Local executor** — run jobs as local subprocesses for development and testing, including array jobs
 - **Job monitoring** — polls the scheduler and fires callbacks on job completion, failure, or cancellation
 - **Job arrays** — submit array jobs with per-element log files
 - **Zombie detection** — jobs that disappear from the scheduler are marked as failed
@@ -76,6 +76,8 @@ async def run_array():
     await monitor.wait_for(job)
     await monitor.stop()
 ```
+
+The array index environment variable depends on the executor: LSF uses `$LSB_JOBINDEX`, while the local executor uses `$ARRAY_INDEX`.
 
 ### Local Testing
 
@@ -194,6 +196,7 @@ By default, each job gets uniquely named log files that include the job ID:
 | LSF | `stdout.%J.log` | `stderr.%J.log` |
 | LSF array | `stdout.%J.%I.log` | `stderr.%J.%I.log` |
 | Local | `stdout.{job_id}.log` | `stderr.{job_id}.log` |
+| Local array | `stdout.{job_id}.{index}.log` | `stderr.{job_id}.{index}.log` |
 
 Set `stdout_path` / `stderr_path` on `ResourceSpec` to override the defaults.
 
