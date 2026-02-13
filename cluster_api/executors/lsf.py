@@ -11,10 +11,10 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from .._types import JobStatus, ResourceSpec
+from .._types import ArrayElement, JobRecord, JobStatus, ResourceSpec
 from ..config import ClusterConfig, parse_memory_bytes
-from ..core import Executor
-from ..exceptions import ClusterAPIError
+from ..core import Executor, _ARRAY_ELEMENT_RE
+from ..exceptions import ClusterAPIError, CommandFailedError
 from ..script import render_script, write_script
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,11 @@ _LSF_STATUS_MAP: dict[str, JobStatus] = {
 
 _BJOBS_FIELDS = (
     "jobid stat exit_code exec_host max_mem "
+    "submit_time start_time finish_time"
+)
+
+_BJOBS_RECONNECT_FIELDS = (
+    "jobid job_name stat exit_code exec_host max_mem "
     "submit_time start_time finish_time"
 )
 
@@ -297,6 +302,7 @@ class LSFExecutor(Executor):
                 "submit_time": _parse_lsf_time(rec.get("SUBMIT_TIME")),
                 "start_time": _parse_lsf_time(rec.get("START_TIME")),
                 "finish_time": _parse_lsf_time(rec.get("FINISH_TIME")),
+                "job_name": _clean_field(rec.get("JOB_NAME")),
             }
 
             result[job_id] = (status, meta)
@@ -314,6 +320,117 @@ class LSFExecutor(Executor):
             if not record.is_terminal and fnmatch.fnmatch(record.name, name_pattern):
                 record.status = JobStatus.KILLED
         logger.info("Cancelled jobs matching %s", name_pattern)
+
+    # --- Reconnection ---
+
+    def _build_reconnect_args(self) -> list[str]:
+        """Build bjobs command for reconnection queries."""
+        if not self.config.job_name_prefix:
+            raise ClusterAPIError(
+                "Cannot reconnect: no job_name_prefix was configured. "
+                "Set job_name_prefix in config to enable reconnection."
+            )
+        return [
+            self.status_command,
+            "-J", f"{self._prefix}-*",
+            "-a",
+            "-o", _BJOBS_RECONNECT_FIELDS,
+            "-json",
+        ]
+
+    async def reconnect(self) -> list[JobRecord]:
+        """Reconnect to running jobs and resume tracking them.
+
+        Queries bjobs, discovers existing jobs by name prefix, and reconstructs
+        ``JobRecord`` instances so monitoring can resume after a process restart.
+
+        Returns:
+            List of newly created ``JobRecord`` instances.
+        """
+        args = self._build_reconnect_args()
+        try:
+            output = await self._call(args, timeout=self.config.command_timeout)
+        except CommandFailedError as e:
+            # bjobs returns non-zero when no jobs match
+            if "No matching job" in str(e) or "No unfinished job" in str(e):
+                return []
+            raise
+
+        statuses = self._parse_job_statuses(output)
+        if not statuses:
+            return []
+
+        # Group into single jobs and array elements
+        singles: dict[str, list[tuple[str, JobStatus, dict[str, Any]]]] = {}
+        arrays: dict[str, list[tuple[int, JobStatus, dict[str, Any]]]] = {}
+
+        for raw_id, (status, meta) in statuses.items():
+            m = _ARRAY_ELEMENT_RE.match(raw_id)
+            if m:
+                parent_id, idx = m.group(1), int(m.group(2))
+                arrays.setdefault(parent_id, []).append((idx, status, meta))
+            else:
+                singles.setdefault(raw_id, []).append((raw_id, status, meta))
+
+        new_records: list[JobRecord] = []
+        now = datetime.now(timezone.utc)
+
+        # Process single (non-array) jobs
+        for job_id, entries in singles.items():
+            if job_id in self._jobs:
+                continue
+            _, status, meta = entries[0]
+            record = JobRecord(
+                job_id=job_id,
+                name=meta.get("job_name") or "",
+                command="",
+                status=status,
+                resources=None,
+                metadata={"reconnected": True},
+                _last_seen=now,
+            )
+            for key in ("exec_host", "max_mem", "exit_code",
+                        "submit_time", "start_time", "finish_time"):
+                if key in meta and meta[key] is not None:
+                    setattr(record, key, meta[key])
+            # Only add as single if it also has no array elements
+            if job_id not in arrays:
+                self._jobs[job_id] = record
+                new_records.append(record)
+
+        # Process array elements, grouping under parent
+        for parent_id, elements in arrays.items():
+            if parent_id in self._jobs:
+                continue
+            indices = sorted(idx for idx, _, _ in elements)
+            array_range = (min(indices), max(indices))
+
+            # Use job_name from the first element's meta
+            first_meta = elements[0][2]
+            record = JobRecord(
+                job_id=parent_id,
+                name=first_meta.get("job_name") or "",
+                command="",
+                status=JobStatus.PENDING,
+                resources=None,
+                metadata={"reconnected": True, "array_range": array_range},
+                _last_seen=now,
+            )
+
+            for idx, elem_status, elem_meta in elements:
+                ae = ArrayElement(index=idx, status=elem_status)
+                for key in ("exec_host", "max_mem", "exit_code",
+                            "submit_time", "start_time", "finish_time"):
+                    if key in elem_meta and elem_meta[key] is not None:
+                        setattr(ae, key, elem_meta[key])
+                record.array_elements[idx] = ae
+
+            record.status = record.compute_array_status()
+            self._jobs[parent_id] = record
+            new_records.append(record)
+
+        logger.info("Reconnected to %d job(s)", len(new_records))
+        return new_records
 
 
 def _clean_field(value: Any) -> str | None:

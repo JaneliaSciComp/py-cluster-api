@@ -179,6 +179,18 @@ class Executor(abc.ABC):
         """Cancel jobs by name pattern. Override in subclasses for native support."""
         raise NotImplementedError("cancel_by_name not supported by this executor")
 
+    async def reconnect(self) -> list[JobRecord]:
+        """Reconnect to running jobs and resume tracking them.
+
+        Queries the scheduler, discovers existing jobs by name prefix, and
+        reconstructs ``JobRecord`` instances so monitoring can resume after
+        a process restart.
+
+        Returns:
+            List of newly created ``JobRecord`` instances.
+        """
+        raise NotImplementedError("reconnect not supported by this executor")
+
     async def cancel_all(self) -> None:
         """Cancel all tracked jobs."""
         to_cancel = [jid for jid, r in self._jobs.items() if not r.is_terminal]
