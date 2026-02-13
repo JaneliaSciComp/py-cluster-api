@@ -248,7 +248,7 @@ class LocalExecutor(Executor):
             err_path = base / f"stderr.{job_id}.{element_index}.log"
         elif resources.stdout_path:
             out_path = Path(resources.stdout_path)
-            err_path = Path(resources.stderr_path) if resources.stderr_path else base / f"stderr.log"
+            err_path = Path(resources.stderr_path) if resources.stderr_path else base / "stderr.log"
         else:
             out_path = base / f"stdout.{job_id}.log" if job_id else base / "stdout.log"
             err_path = base / f"stderr.{job_id}.log" if job_id else base / "stderr.log"

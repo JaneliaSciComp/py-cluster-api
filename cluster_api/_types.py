@@ -41,11 +41,10 @@ class ResourceSpec:
     memory: str | None = None
     walltime: str | None = None
     queue: str | None = None
-    account: str | None = None
     work_dir: str = field(default_factory=os.getcwd)
     stdout_path: str | None = None
     stderr_path: str | None = None
-    cluster_options: list[str] | None = None
+    extra_directives: list[str] | None = None
 
 
 @dataclass

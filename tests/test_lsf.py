@@ -52,7 +52,8 @@ class TestBuildHeader:
         executor = LSFExecutor(lsf_config)
         res = ResourceSpec(
             cpus=4, memory="16 GB", walltime="08:00",
-            queue="long", account="proj1", work_dir="/scratch",
+            queue="long", work_dir="/scratch",
+            extra_directives=["-P proj1"],
         )
         lines = executor.build_header("test-job", res)
         assert any("-q long" in line for line in lines)
@@ -115,10 +116,10 @@ class TestBuildHeader:
         lines = executor.build_header("test-job")
         assert any('-gpu "num=1"' in line for line in lines)
 
-    def test_cluster_options(self, lsf_config):
+    def test_extra_directives(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         res = ResourceSpec(
-            cluster_options=['-R "select[gpus>0]"', "-G mygroup"],
+            extra_directives=['-R "select[gpus>0]"', "-G mygroup"],
         )
         lines = executor.build_header("test-job", res)
         assert any('select[gpus>0]' in line for line in lines)

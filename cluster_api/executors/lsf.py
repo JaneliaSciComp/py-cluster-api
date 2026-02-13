@@ -105,11 +105,6 @@ class LSFExecutor(Executor):
         if queue:
             lines.append(f"{p} -q {queue}")
 
-        # Account/project
-        account = resources.account or self.config.account
-        if account:
-            lines.append(f"{p} -P {account}")
-
         # CPUs
         cpus = resources.cpus or self.config.cpus
         if cpus:
@@ -139,8 +134,8 @@ class LSFExecutor(Executor):
         lines.append(f"{p} -cwd {resources.work_dir}")
 
         # Custom cluster options
-        if resources.cluster_options:
-            for opt in resources.cluster_options:
+        if resources.extra_directives:
+            for opt in resources.extra_directives:
                 lines.append(f"{p} {opt}")
 
         return lines

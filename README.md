@@ -134,7 +134,6 @@ profiles:
 | `memory` | `None` | Default memory (e.g. `"8 GB"`) |
 | `walltime` | `None` | Default wall time (e.g. `"04:00"`) |
 | `queue` | `None` | Default queue/partition |
-| `account` | `None` | Account/project for billing |
 | `poll_interval` | `10.0` | Seconds between status polls |
 | `job_name_prefix` | `"capi"` | Prefix for all job names |
 | `shebang` | `"#!/bin/bash"` | Script shebang line |
@@ -185,7 +184,7 @@ Async polling loop that drives status updates and callback dispatch.
 
 ### `ResourceSpec`
 
-Resource requirements: `cpus`, `memory`, `walltime`, `queue`, `account`, `work_dir`, `stdout_path`, `stderr_path`, `cluster_options`.
+Resource requirements: `cpus`, `memory`, `walltime`, `queue`, `work_dir`, `stdout_path`, `stderr_path`, `extra_directives`.
 
 ## Development
 

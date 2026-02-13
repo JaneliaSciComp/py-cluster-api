@@ -45,7 +45,6 @@ class ClusterConfig:
     memory: str | None = None
     walltime: str | None = None
     queue: str | None = None
-    account: str | None = None
     poll_interval: float = 10.0
     shebang: str = "#!/bin/bash"
     script_prologue: list[str] = field(default_factory=list)
