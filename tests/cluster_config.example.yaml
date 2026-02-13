@@ -12,6 +12,12 @@ suppress_job_email: true
 # script_prologue:
 #   - "module load java/11"
 
-# Optional: extra #BSUB directives added to every job script
+# Optional: extra scheduler flags added to every job script
+# (the #BSUB prefix is added automatically)
 # extra_directives:
-#   - "#BSUB -env 'all'"
+#   - "-env 'all'"
+
+# Optional: extra CLI args appended to the bsub command line
+# extra_args:
+#   - "-P"
+#   - "my_project"

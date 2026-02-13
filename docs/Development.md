@@ -102,7 +102,9 @@ JobMonitor (monitor.py)    # async polling loop → callbacks + zombie detection
 ```
 
 - `build_header()` (per executor) produces directive lines from `ResourceSpec` + config defaults.
-- `directives_skip` filters out unwanted lines; `extra_directives` appends custom ones.
+- `extra_directives` (config-level and per-job) append custom flags — the directive prefix (e.g. `#BSUB`) is added automatically, so users write `"-P myproject"` not `"#BSUB -P myproject"`.
+- `extra_args` (config-level and per-job) append raw arguments to the submit command line (e.g. `bsub -P myproject script.sh`), bypassing the script entirely.
+- `directives_skip` filters out unwanted directive lines by substring match.
 - Scripts are written to `{work_dir}/{safe_name}.{counter}.sh` and made executable.
 
 ### Log file naming

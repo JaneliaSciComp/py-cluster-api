@@ -139,7 +139,7 @@ profiles:
 | `shebang` | `"#!/bin/bash"` | Script shebang line |
 | `script_prologue` | `[]` | Lines inserted before the command |
 | `script_epilogue` | `[]` | Lines inserted after the command |
-| `extra_directives` | `[]` | Additional scheduler directives |
+| `extra_directives` | `[]` | Additional scheduler flags (directive prefix added automatically) |
 | `directives_skip` | `[]` | Substrings to filter out of directives |
 | `extra_args` | `[]` | Extra CLI args appended to the submit command (e.g. `bsub`) |
 | `use_stdin` | `false` | Submit via stdin (`bsub < script.sh`) |
