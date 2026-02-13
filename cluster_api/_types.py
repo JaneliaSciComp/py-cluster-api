@@ -45,6 +45,7 @@ class ResourceSpec:
     stdout_path: str | None = None
     stderr_path: str | None = None
     extra_directives: list[str] | None = None
+    extra_args: list[str] | None = None
 
 
 @dataclass

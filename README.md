@@ -141,6 +141,7 @@ profiles:
 | `script_epilogue` | `[]` | Lines inserted after the command |
 | `extra_directives` | `[]` | Additional scheduler directives |
 | `directives_skip` | `[]` | Substrings to filter out of directives |
+| `extra_args` | `[]` | Extra CLI args appended to the submit command (e.g. `bsub`) |
 | `use_stdin` | `false` | Submit via stdin (`bsub < script.sh`) |
 | `lsf_units` | `"MB"` | LSF memory units (`KB`, `MB`, `GB`) |
 | `suppress_job_email` | `true` | Set `LSB_JOB_REPORT_MAIL=N` |
@@ -184,7 +185,7 @@ Async polling loop that drives status updates and callback dispatch.
 
 ### `ResourceSpec`
 
-Resource requirements: `cpus`, `memory`, `walltime`, `queue`, `work_dir`, `stdout_path`, `stderr_path`, `extra_directives`.
+Resource requirements: `cpus`, `memory`, `walltime`, `queue`, `work_dir`, `stdout_path`, `stderr_path`, `extra_directives`, `extra_args`.
 
 ## Development
 

@@ -147,23 +147,32 @@ class LSFExecutor(Executor):
             submit_env["LSB_JOB_REPORT_MAIL"] = "N"
         return submit_env or None
 
+    def _collect_extra_args(self, resources: ResourceSpec | None = None) -> list[str]:
+        """Merge config-level and per-job extra CLI args."""
+        args = list(self.config.extra_args)
+        if resources and resources.extra_args:
+            args.extend(resources.extra_args)
+        return args
+
     async def _bsub(
         self, script_path: str, content: str | None, env: dict[str, str] | None,
+        extra_args: list[str] | None = None,
     ) -> str:
         """Run bsub via stdin or file and return raw output."""
         submit_env = self._build_submit_env(env)
+        cmd = [self.submit_command, *(extra_args or [])]
         if self.config.use_stdin:
             if content is None:
                 with open(script_path) as f:
                     content = f.read()
             return await self._call(
-                [self.submit_command],
+                cmd,
                 env=submit_env,
                 timeout=self.config.command_timeout,
                 stdin_data=content,
             )
         return await self._call(
-            [self.submit_command, script_path],
+            [*cmd, script_path],
             env=submit_env,
             timeout=self.config.command_timeout,
         )
@@ -184,7 +193,8 @@ class LSFExecutor(Executor):
         script = render_script(self.config, command, header, prologue, epilogue)
         script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
-        out = await self._bsub(script_path, None, env)
+        extra_args = self._collect_extra_args(resources)
+        out = await self._bsub(script_path, None, env, extra_args)
         return self._job_id_from_submit_output(out), script_path
 
     async def _submit_array_job(
@@ -226,7 +236,8 @@ class LSFExecutor(Executor):
         with open(script_path, "w") as f:
             f.write(content)
 
-        out = await self._bsub(script_path, content, env)
+        extra_args = self._collect_extra_args(resources)
+        out = await self._bsub(script_path, content, env, extra_args)
         return self._job_id_from_submit_output(out), script_path
 
     def _build_status_args(self) -> list[str]:
