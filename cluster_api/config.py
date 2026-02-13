@@ -53,7 +53,6 @@ class ClusterConfig:
     directives_skip: list[str] = field(default_factory=list)
     extra_args: list[str] = field(default_factory=list)
     lsf_units: str = "MB"
-    use_stdin: bool = False
     job_name_prefix: str | None = None
     zombie_timeout_minutes: float = 30.0
     completed_retention_minutes: float = 10.0

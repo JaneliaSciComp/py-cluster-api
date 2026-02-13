@@ -116,7 +116,6 @@ profiles:
     queue: normal
     memory: "8 GB"
     walltime: "04:00"
-    use_stdin: true
     script_prologue:
       - "module load java/11"
 
@@ -142,7 +141,6 @@ profiles:
 | `extra_directives` | `[]` | Additional scheduler flags (directive prefix added automatically) |
 | `directives_skip` | `[]` | Substrings to filter out of directives |
 | `extra_args` | `[]` | Extra CLI args appended to the submit command (e.g. `bsub`) |
-| `use_stdin` | `false` | Submit via stdin (`bsub < script.sh`) |
 | `lsf_units` | `"MB"` | LSF memory units (`KB`, `MB`, `GB`) |
 | `suppress_job_email` | `true` | Set `LSB_JOB_REPORT_MAIL=N` |
 | `command_timeout` | `100.0` | Timeout in seconds for scheduler commands |

@@ -268,7 +268,6 @@ class Executor(abc.ABC):
         shell: bool = False,
         timeout: float = 100.0,
         env: dict[str, str] | None = None,
-        stdin_data: str | None = None,
     ) -> str:
         """Run a subprocess and return stdout.
 
@@ -291,12 +290,11 @@ class Executor(abc.ABC):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=full_env,
-                stdin=asyncio.subprocess.PIPE if stdin_data else None,
             )
 
         try:
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(stdin_data.encode() if stdin_data else None),
+                proc.communicate(),
                 timeout=timeout,
             )
         except asyncio.TimeoutError:

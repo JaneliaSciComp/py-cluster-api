@@ -4,7 +4,6 @@
 
 queue: normal
 memory: "1 GB"
-use_stdin: true
 lsf_units: MB
 suppress_job_email: true
 

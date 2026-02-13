@@ -133,7 +133,7 @@ Terminal jobs are purged from memory after `completed_retention_minutes` (once a
 ### Key design decisions
 
 - **Poll-based monitoring** — unlike dask-jobqueue (which relies on workers phoning home), this library actively polls the scheduler. This means it works with any executable, not just Python workers.
-- **Stdin submission** — LSF's `bsub < script.sh` mode avoids filesystem race conditions on shared storage. Controlled by `use_stdin` config.
+- **File-based submission** — jobs are submitted via `bsub script.sh`, passing the script file path directly. The script is always written to disk before submission.
 - **Job name prefixing** — all jobs get a `{prefix}-{name}` name. The prefix is either configured (`job_name_prefix`) or randomly generated, so concurrent sessions don't collide when polling by name.
 - **Array status aggregation** — parent array job status is computed from element statuses. Only transitions to terminal when ALL expected elements are terminal.
 

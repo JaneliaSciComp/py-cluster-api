@@ -37,7 +37,6 @@ def lsf_config():
         walltime="04:00",
         poll_interval=0.5,
         command_timeout=10.0,
-        use_stdin=True,
         suppress_job_email=True,
         lsf_units="MB",
     )
