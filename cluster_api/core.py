@@ -167,10 +167,9 @@ class Executor(abc.ABC):
 
     async def cancel(self, job_id: str) -> None:
         """Cancel a job by ID."""
-        await self._call(
-            [self.cancel_command, job_id],
-            timeout=self.config.command_timeout,
-        )
+        cmd = [self.cancel_command, job_id]
+        logger.debug("Running: %s", " ".join(cmd))
+        await self._call(cmd, timeout=self.config.command_timeout)
         if job_id in self._jobs:
             self._jobs[job_id].status = JobStatus.KILLED
         logger.info("Cancelled job %s", job_id)

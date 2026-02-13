@@ -170,14 +170,17 @@ class LSFExecutor(Executor):
             if content is None:
                 with open(script_path) as f:
                     content = f.read()
+            logger.debug("Running: %s (via stdin)", " ".join(cmd))
             return await self._call(
                 cmd,
                 env=submit_env,
                 timeout=self.config.command_timeout,
                 stdin_data=content,
             )
+        full_cmd = [*cmd, script_path]
+        logger.debug("Running: %s", " ".join(full_cmd))
         return await self._call(
-            [*cmd, script_path],
+            full_cmd,
             env=submit_env,
             timeout=self.config.command_timeout,
         )
@@ -311,10 +314,9 @@ class LSFExecutor(Executor):
 
     async def cancel_by_name(self, name_pattern: str) -> None:
         """Cancel jobs matching name pattern via bkill -J."""
-        await self._call(
-            [self.cancel_command, "-J", name_pattern],
-            timeout=self.config.command_timeout,
-        )
+        cmd = [self.cancel_command, "-J", name_pattern]
+        logger.debug("Running: %s", " ".join(cmd))
+        await self._call(cmd, timeout=self.config.command_timeout)
         # Update in-memory state for matching jobs
         for record in self._jobs.values():
             if not record.is_terminal and fnmatch.fnmatch(record.name, name_pattern):
