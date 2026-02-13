@@ -32,6 +32,7 @@ class LocalExecutor(Executor):
     def __init__(self, config: ClusterConfig) -> None:
         super().__init__(config)
         self._processes: dict[str, asyncio.subprocess.Process] = {}
+        self._open_fds: dict[str, tuple[int, int]] = {}
         self._next_id = 1
         self._script_counter = itertools.count(1)
 
@@ -57,18 +58,22 @@ class LocalExecutor(Executor):
         script = render_script(self.config, command, header, prologue, epilogue)
         script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
+        job_id = str(self._next_id)
+        self._next_id += 1
+
         full_env = {**os.environ, **(env or {})}
+
+        # Write stdout/stderr directly to log files for real-time access
+        stdout_dest, stderr_dest = self._open_output_files(resources, job_id=job_id)
 
         proc = await asyncio.create_subprocess_exec(
             "bash", script_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdout=stdout_dest,
+            stderr=stderr_dest,
             env=full_env,
             cwd=cwd,
         )
 
-        job_id = str(self._next_id)
-        self._next_id += 1
         self._processes[job_id] = proc
         return job_id, script_path
 
@@ -97,10 +102,13 @@ class LocalExecutor(Executor):
 
         for index in range(array_range[0], array_range[1] + 1):
             element_env = {**full_env, "ARRAY_INDEX": str(index)}
+            stdout_dest, stderr_dest = self._open_output_files(
+                resources, job_id=job_id, element_index=index,
+            )
             proc = await asyncio.create_subprocess_exec(
                 "bash", script_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stdout=stdout_dest,
+                stderr=stderr_dest,
                 env=element_env,
                 cwd=cwd,
             )
@@ -130,9 +138,7 @@ class LocalExecutor(Executor):
                 continue
 
             if proc.returncode is not None:
-                # Process finished — capture output to log files
-                await self._write_output_files(record.name, proc, record.resources or ResourceSpec(), job_id)
-
+                self._close_output_files(job_id)
                 now = datetime.now(timezone.utc)
                 record.finish_time = now
                 record._last_seen = now
@@ -165,9 +171,7 @@ class LocalExecutor(Executor):
                 continue
 
             if proc.returncode is not None:
-                resources = record.resources or ResourceSpec()
-                await self._write_output_files(record.name, proc, resources, parent_id, element_index=element_index)
-
+                self._close_output_files(key)
                 now = datetime.now(timezone.utc)
                 elem.finish_time = now
                 if proc.returncode == 0:
@@ -201,6 +205,8 @@ class LocalExecutor(Executor):
             except asyncio.TimeoutError:
                 proc.kill()
 
+        self._close_output_files(job_id)
+
         # Kill array element processes matching "{job_id}[*]"
         prefix = f"{job_id}["
         for key, proc in self._processes.items():
@@ -210,6 +216,7 @@ class LocalExecutor(Executor):
                     await asyncio.wait_for(proc.wait(), timeout=5.0)
                 except asyncio.TimeoutError:
                     proc.kill()
+                self._close_output_files(key)
 
         if job_id in self._jobs:
             record = self._jobs[job_id]
@@ -219,30 +226,47 @@ class LocalExecutor(Executor):
                     elem.status = JobStatus.KILLED
         logger.info("Cancelled local job %s", job_id)
 
-    async def _write_output_files(
-        self, job_name: str, proc: asyncio.subprocess.Process,
-        resources: ResourceSpec, job_id: str,
+    def _open_output_files(
+        self,
+        resources: ResourceSpec,
+        job_id: str | None = None,
         element_index: int | None = None,
-    ) -> None:
-        """Write captured stdout/stderr to output files.
+    ) -> tuple[int, int]:
+        """Open stdout/stderr log files for direct subprocess output.
+
+        Returns a pair of file descriptors suitable for passing to
+        ``asyncio.create_subprocess_exec`` as *stdout* and *stderr*.
 
         Uses per-job paths from ResourceSpec if set, otherwise writes
-        ``stdout.{job_id}.log`` / ``stderr.{job_id}.log`` into the effective
-        work directory.  When *element_index* is provided (array jobs), the
-        filename becomes ``stdout.{job_id}.{element_index}.log``.
+        ``stdout.{job_id}.log`` / ``stderr.{job_id}.log`` into the work
+        directory.  For array elements the filename becomes
+        ``stdout.{job_id}.{element_index}.log``.
         """
-        stdout_data, stderr_data = await proc.communicate()
         base = Path(resources.work_dir)
         if element_index is not None:
             out_path = base / f"stdout.{job_id}.{element_index}.log"
             err_path = base / f"stderr.{job_id}.{element_index}.log"
         elif resources.stdout_path:
             out_path = Path(resources.stdout_path)
-            err_path = Path(resources.stderr_path) if resources.stderr_path else base / f"stderr.{job_id}.log"
+            err_path = Path(resources.stderr_path) if resources.stderr_path else base / f"stderr.log"
         else:
-            out_path = base / f"stdout.{job_id}.log"
-            err_path = base / f"stderr.{job_id}.log"
+            out_path = base / f"stdout.{job_id}.log" if job_id else base / "stdout.log"
+            err_path = base / f"stderr.{job_id}.log" if job_id else base / "stderr.log"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         err_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(stdout_data or b"")
-        err_path.write_bytes(stderr_data or b"")
+        out_fd = os.open(str(out_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        err_fd = os.open(str(err_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        # Track open file descriptors by process key for cleanup
+        key = f"{job_id}[{element_index}]" if element_index is not None else (job_id or "")
+        self._open_fds[key] = (out_fd, err_fd)
+        return out_fd, err_fd
+
+    def _close_output_files(self, key: str) -> None:
+        """Close file descriptors for a finished process."""
+        fds = self._open_fds.pop(key, None)
+        if fds:
+            for fd in fds:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
