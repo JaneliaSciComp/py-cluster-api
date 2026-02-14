@@ -56,26 +56,6 @@ def lsf_format_bytes_ceil(n_bytes: int, lsf_units: str = "MB") -> str:
     return str(math.ceil(n_bytes / units[lsf_units]))
 
 
-async def lsf_detect_units(
-    timeout: float = 100.0,
-) -> str:
-    """Detect LSF memory units from lsadmin output.
-
-    Inspired by dask-jobqueue's approach.
-    """
-    try:
-        out = await Executor._call(
-            ["lsadmin", "showconf", "lim"],
-            timeout=timeout,
-        )
-        for line in out.splitlines():
-            if "LSF_UNIT_FOR_LIMITS" in line:
-                return line.split("=")[-1].strip().upper()
-    except (ClusterAPIError, OSError):
-        pass
-    return "KB"  # LSF default
-
-
 class LSFExecutor(Executor):
     """LSF executor using bsub, bjobs, bkill."""
 

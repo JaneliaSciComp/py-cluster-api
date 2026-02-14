@@ -31,6 +31,3 @@ def get_executor_class(name: str) -> type[Executor]:
     return _REGISTRY[name]
 
 
-def register_executor(name: str, cls: type[Executor]) -> None:
-    """Register a custom executor class."""
-    _REGISTRY[name] = cls

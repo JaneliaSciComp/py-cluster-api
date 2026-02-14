@@ -6,17 +6,14 @@ import asyncio
 import itertools
 import logging
 import os
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .._types import ArrayElement, JobStatus, ResourceSpec
 from ..config import ClusterConfig
-from ..core import Executor
+from ..core import Executor, _ARRAY_ELEMENT_RE
 from ..script import render_script, write_script
-
-_ARRAY_ELEMENT_RE = re.compile(r"^(\d+)\[(\d+)\]$")
 
 logger = logging.getLogger(__name__)
 
