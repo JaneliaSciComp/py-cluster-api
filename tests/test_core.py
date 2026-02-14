@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from cluster_api._types import JobStatus, ResourceSpec
+from cluster_api.core import _sanitize_job_name
 from cluster_api.exceptions import CommandFailedError, CommandTimeoutError, SubmitError
 from cluster_api.executors.local import LocalExecutor
 from cluster_api.script import render_script, write_script
@@ -129,6 +130,48 @@ class TestPrefix:
         a = LocalExecutor(config)
         b = LocalExecutor(config)
         assert a._prefix != b._prefix
+
+
+class TestSanitizeJobName:
+    def test_spaces_replaced(self):
+        assert _sanitize_job_name("my-Demo App-run") == "my-Demo-App-run"
+
+    def test_multiple_spaces(self):
+        assert _sanitize_job_name("a b c") == "a-b-c"
+
+    def test_special_characters(self):
+        assert _sanitize_job_name("job@host#1") == "job-host-1"
+
+    def test_safe_characters_preserved(self):
+        assert _sanitize_job_name("prefix-my_job.v2") == "prefix-my_job.v2"
+
+    def test_already_clean(self):
+        assert _sanitize_job_name("test-myjob") == "test-myjob"
+
+
+class TestSanitizeJobNameIntegration:
+    async def test_submit_sanitizes_name(self, default_config, work_dir):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="echo hello",
+            name="Demo App-run",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        assert " " not in job.name
+        assert job.name == "test-Demo-App-run"
+        await executor.cancel(job.job_id)
+
+    async def test_submit_array_sanitizes_name(self, default_config, work_dir):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit_array(
+            command="echo hello",
+            name="Demo App-run",
+            array_range=(1, 2),
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        assert " " not in job.name
+        assert job.name == "test-Demo-App-run"
+        await executor.cancel(job.job_id)
 
 
 class TestCancelAll:

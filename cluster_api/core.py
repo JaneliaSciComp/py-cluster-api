@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 
 _ARRAY_ELEMENT_RE = re.compile(r"^(.+)\[(\d+)\]$")
 
+_UNSAFE_NAME_RE = re.compile(r"[^\w\-.]")
+
+
+def _sanitize_job_name(name: str) -> str:
+    """Replace characters that are unsafe in scheduler job names."""
+    return _UNSAFE_NAME_RE.sub("-", name)
+
 
 class Executor(abc.ABC):
     """Abstract base for cluster job executors."""
@@ -54,7 +61,7 @@ class Executor(abc.ABC):
     ) -> JobRecord:
         """Submit a job to the scheduler."""
         resources = resources or ResourceSpec()
-        full_name = f"{self._prefix}-{name}"
+        full_name = _sanitize_job_name(f"{self._prefix}-{name}")
 
         job_id, script_path = await self._submit_job(
             command, full_name, resources, prologue, epilogue, env,
@@ -89,7 +96,7 @@ class Executor(abc.ABC):
     ) -> JobRecord:
         """Submit a job array to the scheduler."""
         resources = resources or ResourceSpec()
-        full_name = f"{self._prefix}-{name}"
+        full_name = _sanitize_job_name(f"{self._prefix}-{name}")
 
         job_id, script_path = await self._submit_array_job(
             command, full_name, array_range, resources, prologue, epilogue,
