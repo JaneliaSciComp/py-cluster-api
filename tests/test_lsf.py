@@ -285,9 +285,11 @@ class TestSubmission:
             assert job.job_id == "12345"
             assert job.name == "test-my-job"
             assert job.status == JobStatus.PENDING
-            # Verify file-based submission (script path in cmd args)
+            # Verify shell redirect submission
             cmd = mock_call.call_args[0][0]
-            assert cmd[-1].endswith(".sh")
+            assert "bsub" in cmd
+            assert "< " in cmd
+            assert cmd.endswith(".sh")
 
 
     async def test_submit_email_suppression(self, lsf_config, work_dir):
@@ -313,7 +315,7 @@ class TestSubmission:
             executor, "_call",
             new_callable=AsyncMock,
             return_value="Job <12345> is submitted to queue <normal>.",
-        ) as mock_call:
+        ):
             job = await executor.submit_array(
                 command="python process.py --index $LSB_JOBINDEX",
                 name="batch",
@@ -322,9 +324,7 @@ class TestSubmission:
             )
             assert job.job_id == "12345"
             assert job.metadata["array_range"] == (1, 50)
-            # Verify script file contains array name
-            script_path = mock_call.call_args[0][0][-1]
-            with open(script_path) as f:
+            with open(job.script_path) as f:
                 script = f.read()
             assert "[1-50]" in script
 
@@ -337,15 +337,14 @@ class TestArrayScriptRewriting:
             executor, "_call",
             new_callable=AsyncMock,
             return_value="Job <12345> is submitted to queue <normal>.",
-        ) as mock_call:
-            await executor.submit_array(
+        ):
+            job = await executor.submit_array(
                 command="echo hello",
                 name="arr",
                 array_range=(1, 10),
                 resources=ResourceSpec(work_dir=work_dir),
             )
-            script_path = mock_call.call_args[0][0][-1]
-            with open(script_path) as f:
+            with open(job.script_path) as f:
                 script = f.read()
             assert "stdout.%J.%I.log" in script
             assert "stderr.%J.%I.log" in script
@@ -405,7 +404,7 @@ class TestArrayConcurrency:
             executor, "_call",
             new_callable=AsyncMock,
             return_value="Job <12345> is submitted to queue <normal>.",
-        ) as mock_call:
+        ):
             job = await executor.submit_array(
                 command="echo hello",
                 name="batch",
@@ -415,8 +414,7 @@ class TestArrayConcurrency:
             )
             assert job.job_id == "12345"
             assert job.metadata["max_concurrent"] == 15
-            script_path = mock_call.call_args[0][0][-1]
-            with open(script_path) as f:
+            with open(job.script_path) as f:
                 script = f.read()
             assert "[1-100%15]" in script
 
@@ -427,15 +425,14 @@ class TestArrayConcurrency:
             executor, "_call",
             new_callable=AsyncMock,
             return_value="Job <12345> is submitted to queue <normal>.",
-        ) as mock_call:
+        ):
             job = await executor.submit_array(
                 command="echo hello",
                 name="batch",
                 array_range=(1, 100),
                 resources=ResourceSpec(work_dir=work_dir),
             )
-            script_path = mock_call.call_args[0][0][-1]
-            with open(script_path) as f:
+            with open(job.script_path) as f:
                 script = f.read()
             assert "[1-100]" in script
             j_line = [line for line in script.splitlines() if "-J " in line][0]
