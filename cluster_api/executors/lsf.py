@@ -416,7 +416,11 @@ def _clean_field(value: Any) -> str | None:
 
 
 def _parse_lsf_time(value: Any) -> datetime | None:
-    """Parse an LSF timestamp string."""
+    """Parse an LSF timestamp string.
+
+    LSF reports times in local timezone (indicated by trailing " L").
+    We parse as naive local time and convert to UTC.
+    """
     s = _clean_field(value)
     if s is None:
         return None
@@ -425,7 +429,9 @@ def _parse_lsf_time(value: Any) -> datetime | None:
     # LSF timestamps are typically like "Jan  1 12:00:00 2024"
     for fmt in ("%b %d %H:%M:%S %Y", "%b  %d %H:%M:%S %Y", "%Y/%m/%d-%H:%M:%S"):
         try:
-            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+            naive_local = datetime.strptime(s, fmt)
+            # naive datetime assumed as local time by astimezone(), then converted to UTC
+            return naive_local.astimezone(timezone.utc)
         except ValueError:
             continue
     return None
