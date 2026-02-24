@@ -841,8 +841,8 @@ packages:
   timestamp: 1764896838868
 - pypi: ./
   name: py-cluster-api
-  version: 0.2.3
-  sha256: 7a4d0fcfb56fa41e15c733df3e7172173e724dfba428df46d55c06983eb4749d
+  version: 0.2.4
+  sha256: fa7e3d392473de2f63cc6a0aff42c8491418e1cfb4d15f4d75d37dcdb48426f2
   requires_dist:
   - pyyaml
   - pytest ; extra == 'test'
