@@ -115,21 +115,39 @@ class TestPrefix:
         executor = LocalExecutor(default_config)
         assert executor._prefix == "test"
 
-    def test_random_prefix_when_none(self):
+    def test_no_prefix_when_none(self):
         from cluster_api.config import ClusterConfig
 
         config = ClusterConfig()
         executor = LocalExecutor(config)
-        assert len(executor._prefix) == 5
-        assert executor._prefix.isalnum()
+        assert executor._prefix is None
 
-    def test_random_prefix_is_unique(self):
+    async def test_submit_no_prefix(self, work_dir):
         from cluster_api.config import ClusterConfig
 
         config = ClusterConfig()
-        a = LocalExecutor(config)
-        b = LocalExecutor(config)
-        assert a._prefix != b._prefix
+        executor = LocalExecutor(config)
+        job = await executor.submit(
+            command="echo hello",
+            name="my-job",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        assert job.name == "my-job"
+        await executor.cancel(job.job_id)
+
+    async def test_submit_array_no_prefix(self, work_dir):
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig()
+        executor = LocalExecutor(config)
+        job = await executor.submit_array(
+            command="echo hello",
+            name="my-array",
+            array_range=(1, 2),
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        assert job.name == "my-array"
+        await executor.cancel(job.job_id)
 
 
 class TestSanitizeJobName:

@@ -7,8 +7,6 @@ import asyncio
 import logging
 import os
 import re
-import secrets
-import string
 from datetime import datetime, timezone
 from typing import Any
 
@@ -39,13 +37,7 @@ class Executor(abc.ABC):
     def __init__(self, config: ClusterConfig) -> None:
         self.config = config
         self._jobs: dict[str, JobRecord] = {}
-        if config.job_name_prefix:
-            self._prefix = config.job_name_prefix
-        else:
-            # Generate a random prefix so concurrent users/sessions don't
-            # see each other's jobs when polling by name.
-            alphabet = string.ascii_lowercase + string.digits
-            self._prefix = "".join(secrets.choice(alphabet) for _ in range(5))
+        self._prefix = config.job_name_prefix  # None if not configured
 
     # --- Submission ---
 
@@ -61,7 +53,7 @@ class Executor(abc.ABC):
     ) -> JobRecord:
         """Submit a job to the scheduler."""
         resources = resources or ResourceSpec()
-        full_name = _sanitize_job_name(f"{self._prefix}-{name}")
+        full_name = _sanitize_job_name(f"{self._prefix}-{name}" if self._prefix else name)
 
         job_id, script_path = await self._submit_job(
             command, full_name, resources, prologue, epilogue, env,
@@ -96,7 +88,7 @@ class Executor(abc.ABC):
     ) -> JobRecord:
         """Submit a job array to the scheduler."""
         resources = resources or ResourceSpec()
-        full_name = _sanitize_job_name(f"{self._prefix}-{name}")
+        full_name = _sanitize_job_name(f"{self._prefix}-{name}" if self._prefix else name)
 
         job_id, script_path = await self._submit_array_job(
             command, full_name, array_range, resources, prologue, epilogue,

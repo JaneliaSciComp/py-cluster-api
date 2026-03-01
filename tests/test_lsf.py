@@ -267,6 +267,17 @@ class TestBuildStatusArgs:
         assert "-json" in args
         assert "test-*" in args
 
+    def test_status_args_no_prefix(self):
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig(executor="lsf", lsf_units="MB")
+        executor = LSFExecutor(config)
+        args = executor._build_status_args()
+        assert "bjobs" in args
+        assert "-a" in args
+        assert "-json" in args
+        assert "-J" not in args
+
 
 class TestSubmission:
 

@@ -220,14 +220,10 @@ class LSFExecutor(Executor):
 
     def _build_status_args(self) -> list[str]:
         """Build bjobs command with JSON output."""
-        prefix = self._prefix
-        args = [
-            self.status_command,
-            "-J", f"{prefix}-*",
-            "-a",
-            "-o", _BJOBS_FIELDS,
-            "-json",
-        ]
+        args = [self.status_command]
+        if self._prefix:
+            args.extend(["-J", f"{self._prefix}-*"])
+        args.extend(["-a", "-o", _BJOBS_FIELDS, "-json"])
         return args
 
     def _parse_job_statuses(

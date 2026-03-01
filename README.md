@@ -136,7 +136,7 @@ profiles:
 | `walltime` | `None` | Default wall time (e.g. `"04:00"`) |
 | `queue` | `None` | Default queue/partition |
 | `poll_interval` | `10.0` | Seconds between status polls |
-| `job_name_prefix` | `"capi"` | Prefix for all job names |
+| `job_name_prefix` | `None` | Optional prefix prepended to job names. When set, polling filters by `{prefix}-*`; when unset, the user controls the full job name and polling queries all jobs |
 | `shebang` | `"#!/bin/bash"` | Script shebang line |
 | `script_prologue` | `[]` | Lines inserted before the command |
 | `script_epilogue` | `[]` | Lines inserted after the command |
