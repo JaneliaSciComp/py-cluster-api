@@ -191,7 +191,7 @@ class LocalExecutor(Executor):
 
         return {jid: r.status for jid, r in self._jobs.items()}
 
-    async def cancel(self, job_id: str) -> None:
+    async def cancel(self, job_id: str, *, done: bool = False) -> None:
         """Terminate a local subprocess (or all element processes for an array job)."""
         # Kill single-job process if present
         proc = self._processes.get(job_id)
@@ -215,13 +215,14 @@ class LocalExecutor(Executor):
                     proc.kill()
                 self._close_output_files(key)
 
+        target_status = JobStatus.DONE if done else JobStatus.KILLED
         if job_id in self._jobs:
             record = self._jobs[job_id]
-            record.status = JobStatus.KILLED
+            record.status = target_status
             for elem in record.array_elements.values():
                 if elem.status not in {JobStatus.DONE, JobStatus.FAILED, JobStatus.KILLED}:
-                    elem.status = JobStatus.KILLED
-        logger.info("Cancelled local job %s", job_id)
+                    elem.status = target_status
+        logger.info("Cancelled local job %s (done=%s)", job_id, done)
 
     def _open_output_files(
         self,

@@ -350,6 +350,53 @@ class TestArrayScriptRewriting:
             assert "stderr.%J.%I.log" in script
 
 
+class TestCancel:
+
+    async def test_cancel_passes_d_flag_when_done(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <123> is being submitted",
+        ):
+            job = await executor.submit(
+                command="echo hi", name="cancel-done",
+                resources=ResourceSpec(work_dir="/tmp"),
+            )
+
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="",
+        ) as mock_call:
+            await executor.cancel(job.job_id, done=True)
+            args = mock_call.call_args[0][0]
+            assert args == ["bkill", "-d", job.job_id]
+            assert job.status == JobStatus.DONE
+
+    async def test_cancel_without_done_flag(self, lsf_config):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <456> is being submitted",
+        ):
+            job = await executor.submit(
+                command="echo hi", name="cancel-kill",
+                resources=ResourceSpec(work_dir="/tmp"),
+            )
+
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="",
+        ) as mock_call:
+            await executor.cancel(job.job_id)
+            args = mock_call.call_args[0][0]
+            assert args == ["bkill", job.job_id]
+            assert job.status == JobStatus.KILLED
+
+
 class TestCancelByName:
 
     async def test_cancel_by_name(self, lsf_config):

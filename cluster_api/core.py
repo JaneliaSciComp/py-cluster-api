@@ -172,14 +172,23 @@ class Executor(abc.ABC):
 
     # --- Cancellation ---
 
-    async def cancel(self, job_id: str) -> None:
-        """Cancel a job by ID."""
-        cmd = [self.cancel_command, job_id]
+    async def cancel(self, job_id: str, *, done: bool = False) -> None:
+        """Cancel a job by ID.
+
+        Args:
+            job_id: The job ID to cancel.
+            done: If True, mark the job as DONE instead of KILLED.
+                  On LSF this passes ``-d`` to bkill.
+        """
+        cmd = [self.cancel_command]
+        if done:
+            cmd.append("-d")
+        cmd.append(job_id)
         logger.debug("Running: %s", " ".join(cmd))
         await self._call(cmd, timeout=self.config.command_timeout)
         if job_id in self._jobs:
-            self._jobs[job_id].status = JobStatus.KILLED
-        logger.info("Cancelled job %s", job_id)
+            self._jobs[job_id].status = JobStatus.DONE if done else JobStatus.KILLED
+        logger.info("Cancelled job %s (done=%s)", job_id, done)
 
     async def cancel_by_name(self, name_pattern: str) -> None:
         """Cancel jobs by name pattern. Override in subclasses for native support."""
@@ -197,10 +206,10 @@ class Executor(abc.ABC):
         """
         raise NotImplementedError("reconnect not supported by this executor")
 
-    async def cancel_all(self) -> None:
+    async def cancel_all(self, *, done: bool = False) -> None:
         """Cancel all tracked jobs."""
         to_cancel = [jid for jid, r in self._jobs.items() if not r.is_terminal]
-        await asyncio.gather(*(self.cancel(jid) for jid in to_cancel))
+        await asyncio.gather(*(self.cancel(jid, done=done) for jid in to_cancel))
 
     # --- Status polling ---
 

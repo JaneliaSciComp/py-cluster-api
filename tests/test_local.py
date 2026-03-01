@@ -70,6 +70,16 @@ class TestLocalSubmitAndPoll:
         await executor.cancel(job.job_id)
         assert job.status == JobStatus.KILLED
 
+    async def test_cancel_done(self, default_config, work_dir):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="sleep 60", name="cancel-done-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+
+        await asyncio.sleep(0.1)
+        await executor.cancel(job.job_id, done=True)
+        assert job.status == JobStatus.DONE
 
     async def test_multiple_jobs(self, default_config, work_dir):
         executor = LocalExecutor(default_config)

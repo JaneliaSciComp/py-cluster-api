@@ -186,3 +186,14 @@ class TestCancelAll:
 
         await executor.cancel_all()
         assert job.status == JobStatus.KILLED
+
+    async def test_cancel_all_done(self, default_config, work_dir):
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="sleep 60", name="sleeper",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        assert not job.is_terminal
+
+        await executor.cancel_all(done=True)
+        assert job.status == JobStatus.DONE
