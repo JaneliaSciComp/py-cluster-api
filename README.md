@@ -45,7 +45,7 @@ async def main():
     job = await executor.submit(
         command="nextflow run nf-core/rnaseq --input samples.csv",
         name="rnaseq-run",
-        resources=ResourceSpec(cpus=4, memory="32 GB", walltime="24:00", queue="long"),
+        resources=ResourceSpec(cpus=4, gpus=1, memory="32 GB", walltime="24:00", queue="long"),
         env={"NXF_WORK": "/scratch/work"},
     )
     job.on_success(lambda j: print(f"Done! Job {j.job_id}, peak mem: {j.max_mem}"))
@@ -114,6 +114,7 @@ profiles:
   janelia_lsf:
     executor: lsf
     queue: normal
+    gpus: 1
     memory: "8 GB"
     walltime: "04:00"
     script_prologue:
@@ -130,6 +131,7 @@ profiles:
 |---|---|---|
 | `executor` | `"local"` | Backend: `lsf` or `local` |
 | `cpus` | `None` | Default CPU count |
+| `gpus` | `None` | Default GPU count |
 | `memory` | `None` | Default memory (e.g. `"8 GB"`) |
 | `walltime` | `None` | Default wall time (e.g. `"04:00"`) |
 | `queue` | `None` | Default queue/partition |
@@ -159,9 +161,9 @@ Abstract base class. Key methods:
 
 - `submit(command, name, resources=None, prologue=None, epilogue=None, env=None, metadata=None)` — submit a job, returns `JobRecord`
 - `submit_array(command, name, array_range, ...)` — submit a job array
-- `cancel(job_id)` — cancel a job by ID
+- `cancel(job_id, *, done=False)` — cancel a job by ID (done=True marks as DONE)
 - `cancel_by_name(name_pattern)` — cancel by name pattern (LSF only)
-- `cancel_all()` — cancel all tracked jobs
+- `cancel_all(*, done=False)` — cancel all tracked jobs
 - `poll()` — query scheduler and update job statuses
 - `jobs` / `active_jobs` — properties returning tracked job dicts
 
@@ -183,7 +185,7 @@ Async polling loop that drives status updates and callback dispatch.
 
 ### `ResourceSpec`
 
-Resource requirements: `cpus`, `memory`, `walltime`, `queue`, `work_dir`, `stdout_path`, `stderr_path`, `extra_directives`, `extra_args`.
+Resource requirements: `cpus`, `gpus`, `memory`, `walltime`, `queue`, `work_dir`, `stdout_path`, `stderr_path`, `extra_directives`, `extra_args`.
 
 ## Development
 

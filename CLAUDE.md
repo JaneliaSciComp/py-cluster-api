@@ -22,7 +22,7 @@ pixi run check        # lint + test
 
 - `cluster_api/` — library source
   - `core.py` — abstract `Executor` base class
-  - `_types.py` — `JobStatus`, `JobRecord`, `ResourceSpec`, `JobExitCondition`, `ArrayElement`
+  - `_types.py` — `JobStatus`, `JobRecord`, `ResourceSpec` (`cpus`, `gpus`, …), `JobExitCondition`, `ArrayElement`
   - `config.py` — YAML config loader with profiles
   - `script.py` — script rendering (`render_script`) and writing (`write_script`)
   - `monitor.py` — async polling loop + callback dispatch

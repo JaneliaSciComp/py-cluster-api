@@ -7,6 +7,9 @@ memory: "1 GB"
 lsf_units: MB
 suppress_job_email: true
 
+# Optional: request GPU resources
+# gpus: 1
+
 # Optional: prologue commands to run before each job
 # script_prologue:
 #   - "module load java/11"
