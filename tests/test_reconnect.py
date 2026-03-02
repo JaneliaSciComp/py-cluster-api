@@ -61,7 +61,8 @@ class TestReconnectByPrefix:
         assert job.resources is None
         assert job.exec_host == "node01"
 
-    async def test_completed_job(self, lsf_config):
+    async def test_completed_job_skipped(self, lsf_config):
+        """Terminal jobs from -a flag should not be reconnected."""
         executor = LSFExecutor(lsf_config)
         output = _make_bjobs_json([
             _make_record(
@@ -73,11 +74,10 @@ class TestReconnectByPrefix:
         with patch.object(executor, "_call", new_callable=AsyncMock, return_value=output):
             jobs = await executor.reconnect()
 
-        assert len(jobs) == 1
-        assert jobs[0].status == JobStatus.DONE
-        assert jobs[0].exit_code == 0
+        assert len(jobs) == 0
 
-    async def test_multiple_jobs(self, lsf_config):
+    async def test_multiple_jobs_filters_terminal(self, lsf_config):
+        """Only non-terminal jobs should be reconnected; DONE/EXIT are skipped."""
         executor = LSFExecutor(lsf_config)
         output = _make_bjobs_json([
             _make_record(job_id="100", job_name="test-a", stat="RUN"),
@@ -91,13 +91,12 @@ class TestReconnectByPrefix:
         with patch.object(executor, "_call", new_callable=AsyncMock, return_value=output):
             jobs = await executor.reconnect()
 
-        assert len(jobs) == 3
+        assert len(jobs) == 2
         ids = {j.job_id for j in jobs}
-        assert ids == {"100", "101", "102"}
+        assert ids == {"100", "101"}
         by_id = {j.job_id: j for j in jobs}
         assert by_id["100"].status == JobStatus.RUNNING
         assert by_id["101"].status == JobStatus.PENDING
-        assert by_id["102"].status == JobStatus.DONE
 
     async def test_skips_already_tracked(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
@@ -232,9 +231,9 @@ class TestReconnectArrayJobs:
 
         assert jobs[0].metadata["array_range"] == (5, 10)
 
-    async def test_status_computed(self, lsf_config):
+    async def test_all_terminal_array_skipped(self, lsf_config):
+        """Array where all visible elements are terminal should not be reconnected."""
         executor = LSFExecutor(lsf_config)
-        # All elements done → parent status should be DONE
         output = _make_bjobs_json([
             _make_record(job_id="600[1]", job_name="test-alldone", stat="DONE", exit_code="0"),
             _make_record(job_id="600[2]", job_name="test-alldone", stat="DONE", exit_code="0"),
@@ -243,9 +242,10 @@ class TestReconnectArrayJobs:
         with patch.object(executor, "_call", new_callable=AsyncMock, return_value=output):
             jobs = await executor.reconnect()
 
-        assert jobs[0].status == JobStatus.DONE
+        assert len(jobs) == 0
 
-    async def test_status_computed_with_failure(self, lsf_config):
+    async def test_all_terminal_array_with_failure_skipped(self, lsf_config):
+        """Array where all elements are terminal (even with failures) should not be reconnected."""
         executor = LSFExecutor(lsf_config)
         output = _make_bjobs_json([
             _make_record(job_id="700[1]", job_name="test-mixed", stat="DONE", exit_code="0"),
@@ -255,8 +255,7 @@ class TestReconnectArrayJobs:
         with patch.object(executor, "_call", new_callable=AsyncMock, return_value=output):
             jobs = await executor.reconnect()
 
-        assert jobs[0].status == JobStatus.FAILED
-        assert jobs[0].failed_element_indices == [2]
+        assert len(jobs) == 0
 
     async def test_mixed_single_and_array(self, lsf_config):
         executor = LSFExecutor(lsf_config)
@@ -280,8 +279,8 @@ class TestReconnectArrayJobs:
         executor = LSFExecutor(lsf_config)
         output = _make_bjobs_json([
             _make_record(
-                job_id="1000[1]", job_name="test-meta", stat="DONE",
-                exit_code="0", exec_host="node01", max_mem="256 MB",
+                job_id="1000[1]", job_name="test-meta", stat="RUN",
+                exec_host="node01", max_mem="256 MB",
             ),
         ])
 
@@ -291,7 +290,6 @@ class TestReconnectArrayJobs:
         elem = jobs[0].array_elements[1]
         assert elem.exec_host == "node01"
         assert elem.max_mem == "256 MB"
-        assert elem.exit_code == 0
 
 
 class TestReconnectThenPoll:

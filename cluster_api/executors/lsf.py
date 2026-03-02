@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from .._types import ArrayElement, JobRecord, JobStatus, ResourceSpec
+from .._types import ArrayElement, JobRecord, JobStatus, ResourceSpec, _TERMINAL_STATUSES
 from ..config import ClusterConfig, parse_memory_bytes
 from ..core import Executor, _ARRAY_ELEMENT_RE
 from ..exceptions import ClusterAPIError, CommandFailedError
@@ -343,11 +343,14 @@ class LSFExecutor(Executor):
         new_records: list[JobRecord] = []
         now = datetime.now(timezone.utc)
 
-        # Process single (non-array) jobs
+        # Process single (non-array) jobs, skipping terminal ones
+        # (-a returns DONE/EXIT jobs too; no point reconnecting to those)
         for job_id, entries in singles.items():
             if job_id in self._jobs:
                 continue
             _, status, meta = entries[0]
+            if status in _TERMINAL_STATUSES:
+                continue
             record = JobRecord(
                 job_id=job_id,
                 name=meta.get("job_name") or "",
@@ -367,8 +370,11 @@ class LSFExecutor(Executor):
                 new_records.append(record)
 
         # Process array elements, grouping under parent
+        # Skip arrays where every visible element is already terminal
         for parent_id, elements in arrays.items():
             if parent_id in self._jobs:
+                continue
+            if all(s in _TERMINAL_STATUSES for _, s, _ in elements):
                 continue
             indices = sorted(idx for idx, _, _ in elements)
             array_range = (min(indices), max(indices))
