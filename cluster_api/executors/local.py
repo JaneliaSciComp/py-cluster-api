@@ -88,6 +88,12 @@ class LocalExecutor(Executor):
         cwd: str | None = None,
     ) -> tuple[str, str | None]:
         """Spawn one subprocess per array element with ARRAY_INDEX env var."""
+        if max_concurrent is not None:
+            logger.warning(
+                "LocalExecutor does not support max_concurrent; "
+                "all %d elements will run simultaneously",
+                array_range[1] - array_range[0] + 1,
+            )
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
         script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
