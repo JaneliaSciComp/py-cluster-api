@@ -296,11 +296,11 @@ class TestSubmission:
             assert job.job_id == "12345"
             assert job.name == "test-my-job"
             assert job.status == JobStatus.PENDING
-            # Verify shell redirect submission
+            # Verify bsub invocation with stdin_file
             cmd = mock_call.call_args[0][0]
-            assert "bsub" in cmd
-            assert "< " in cmd
-            assert cmd.endswith(".sh")
+            assert cmd[0] == "bsub"
+            kwargs = mock_call.call_args[1]
+            assert kwargs["stdin_file"].endswith(".sh")
 
 
     async def test_submit_email_suppression(self, lsf_config, work_dir):

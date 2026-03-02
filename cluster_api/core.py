@@ -273,9 +273,9 @@ class Executor(abc.ABC):
     @staticmethod
     async def _call(
         cmd: list[str],
-        shell: bool = False,
         timeout: float = 100.0,
         env: dict[str, str] | None = None,
+        stdin_file: str | None = None,
     ) -> str:
         """Run a subprocess and return stdout.
 
@@ -285,32 +285,32 @@ class Executor(abc.ABC):
         if env:
             full_env = {**os.environ, **env}
 
-        if shell:
-            proc = await asyncio.create_subprocess_shell(
-                cmd if isinstance(cmd, str) else " ".join(cmd),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=full_env,
-            )
-        else:
+        stdin_fh = None
+        try:
+            if stdin_file:
+                stdin_fh = open(stdin_file)  # noqa: SIM115
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=stdin_fh,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=full_env,
             )
 
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            raise CommandTimeoutError(
-                f"Command timed out after {timeout}s: {cmd}"
-            )
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise CommandTimeoutError(
+                    f"Command timed out after {timeout}s: {cmd}"
+                )
+        finally:
+            if stdin_fh:
+                stdin_fh.close()
 
         out = stdout.decode().strip()
         err = stderr.decode().strip()

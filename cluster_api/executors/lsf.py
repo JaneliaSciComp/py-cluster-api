@@ -145,12 +145,11 @@ class LSFExecutor(Executor):
     ) -> str:
         """Run bsub with a script file and return raw output."""
         submit_env = self._build_submit_env(env)
-        extra = " ".join(extra_args) + " " if extra_args else ""
-        cmd = f"{self.submit_command} {extra}< {script_path}"
-        logger.debug("Running: %s", cmd)
+        cmd = [self.submit_command, *(extra_args or [])]
+        logger.debug("Running: %s < %s", cmd, script_path)
         return await self._call(
             cmd,
-            shell=True,
+            stdin_file=script_path,
             env=submit_env,
             timeout=self.config.command_timeout,
         )
