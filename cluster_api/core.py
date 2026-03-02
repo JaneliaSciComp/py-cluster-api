@@ -307,6 +307,7 @@ class Executor(abc.ABC):
             )
         except asyncio.TimeoutError:
             proc.kill()
+            await proc.wait()
             raise CommandTimeoutError(
                 f"Command timed out after {timeout}s: {cmd}"
             )
