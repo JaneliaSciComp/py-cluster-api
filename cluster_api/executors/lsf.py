@@ -281,7 +281,13 @@ class LSFExecutor(Executor):
         """Cancel jobs matching name pattern via bkill -J."""
         cmd = [self.cancel_command, "-J", name_pattern]
         logger.debug("Running: %s", " ".join(cmd))
-        await self._call(cmd, timeout=self.config.command_timeout)
+        try:
+            await self._call(cmd, timeout=self.config.command_timeout)
+        except CommandFailedError as e:
+            if "No matching job" in str(e) or "No unfinished job" in str(e):
+                logger.debug("No jobs matched pattern %s", name_pattern)
+                return
+            raise
         # Update in-memory state for matching jobs
         for record in self._jobs.values():
             if not record.is_terminal and fnmatch.fnmatch(record.name, name_pattern):

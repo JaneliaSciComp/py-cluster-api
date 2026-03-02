@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from cluster_api._types import ArrayElement, JobRecord, JobStatus, ResourceSpec
+from cluster_api.exceptions import CommandFailedError
 from cluster_api.executors.lsf import (
     LSFExecutor,
     _LSF_STATUS_MAP,
@@ -423,6 +424,16 @@ class TestCancelByName:
             assert "bkill" in args
             assert "-J" in args
             assert "test-*" in args
+
+    async def test_cancel_by_name_no_match(self, lsf_config):
+        """bkill -J returns non-zero when no jobs match; should not raise."""
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            side_effect=CommandFailedError("No matching job found"),
+        ):
+            await executor.cancel_by_name("nonexistent-*")
 
 
 class TestParseLsfTime:
