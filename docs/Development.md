@@ -37,6 +37,7 @@ pixi run check         # lint + test together
 | `test_lsf.py` | `LSFExecutor` header building, bsub submission, bjobs parsing, array rewriting | No — mocks `_call()` |
 | `test_local.py` | `LocalExecutor` end-to-end (submit, poll, output files, callbacks, array jobs) | **Yes** — runs real bash subprocesses |
 | `test_monitor.py` | `JobMonitor` polling loop, callback dispatch, zombie detection, purging | No — mocks `poll()` |
+| `test_reconnect.py` | `LSFExecutor.reconnect()` — rediscovering running jobs after restart | No — mocks `_call()` |
 | `test_integration.py` | Full LSF round-trips (submit, monitor, cancel, arrays, metadata) | **Yes** — requires a live LSF cluster |
 
 ### Writing tests
@@ -102,7 +103,9 @@ JobMonitor (monitor.py)    # async polling loop → callbacks + zombie detection
 ```
 
 - `build_header()` (per executor) produces directive lines from `ResourceSpec` + config defaults.
-- `extra_directives` (config-level and per-job) append custom flags — the directive prefix (e.g. `#BSUB`) is added automatically, so users write `"-P myproject"` not `"#BSUB -P myproject"`.
+- `extra_directives` has two levels with different behaviour:
+  - **Config-level** (`ClusterConfig.extra_directives`): appended verbatim to the script header — users must include the full prefix, e.g. `"#BSUB -P myproject"`.
+  - **ResourceSpec-level** (`ResourceSpec.extra_directives`): the directive prefix is added automatically, so users write `"-P myproject"` and the executor produces `"#BSUB -P myproject"`.
 - `extra_args` (config-level and per-job) append raw arguments to the submit command line (e.g. `bsub -P myproject script.sh`), bypassing the script entirely.
 - `directives_skip` filters out unwanted directive lines by substring match.
 - Scripts are written to `{work_dir}/{safe_name}.{counter}.sh` and made executable.
@@ -133,8 +136,8 @@ Terminal jobs are purged from memory after `completed_retention_minutes` (once a
 ### Key design decisions
 
 - **Poll-based monitoring** — unlike dask-jobqueue (which relies on workers phoning home), this library actively polls the scheduler. This means it works with any executable, not just Python workers.
-- **File-based submission** — jobs are submitted via `bsub script.sh`, passing the script file path directly. The script is always written to disk before submission.
-- **Job name prefixing** — all jobs get a `{prefix}-{name}` name. The prefix is either configured (`job_name_prefix`) or randomly generated, so concurrent sessions don't collide when polling by name.
+- **Stdin-based submission** — job scripts are written to disk, then submitted via stdin redirection (`bsub < script.sh`). The script file is kept on disk for debugging.
+- **Job name prefixing** — when `job_name_prefix` is configured, all jobs get a `{prefix}-{name}` name and polling filters by that prefix. When unset, the user controls the full job name and polling queries all jobs. `reconnect()` requires a prefix to be set.
 - **Array status aggregation** — parent array job status is computed from element statuses. Only transitions to terminal when ALL expected elements are terminal.
 
 ## Module reference

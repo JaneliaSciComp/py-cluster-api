@@ -41,7 +41,7 @@ Explicit `stdout_path` / `stderr_path` in `ResourceSpec` override these defaults
 
 ## Testing
 
-All tests mock `Executor._call()` to avoid needing a real scheduler (except `test_local.py` which runs real subprocesses). Use `unittest.mock.patch` with `AsyncMock` for async method mocking.
+All tests mock `Executor._call()` to avoid needing a real scheduler (except `test_local.py` which runs real subprocesses, and `test_integration.py` which requires a live LSF cluster and is skipped by default). Use `unittest.mock.patch` with `AsyncMock` for async method mocking.
 
 ## Style
 

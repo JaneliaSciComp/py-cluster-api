@@ -136,11 +136,11 @@ profiles:
 | `walltime` | `None` | Default wall time (e.g. `"04:00"`) |
 | `queue` | `None` | Default queue/partition |
 | `poll_interval` | `10.0` | Seconds between status polls |
-| `job_name_prefix` | `None` | Optional prefix prepended to job names. When set, polling filters by `{prefix}-*`; when unset, the user controls the full job name and polling queries all jobs |
+| `job_name_prefix` | `None` | Optional prefix prepended to job names. When set, polling filters by `{prefix}-*` and `reconnect()` is available; when unset, the user controls the full job name and polling queries all jobs |
 | `shebang` | `"#!/bin/bash"` | Script shebang line |
 | `script_prologue` | `[]` | Lines inserted before the command |
 | `script_epilogue` | `[]` | Lines inserted after the command |
-| `extra_directives` | `[]` | Additional scheduler flags (directive prefix added automatically) |
+| `extra_directives` | `[]` | Additional scheduler directive lines appended verbatim to the script header (e.g. `"#BSUB -P myproject"`) |
 | `directives_skip` | `[]` | Substrings to filter out of directives |
 | `extra_args` | `[]` | Extra CLI args appended to the submit command (e.g. `bsub`) |
 | `lsf_units` | `"MB"` | LSF memory units (`KB`, `MB`, `GB`) |
@@ -164,6 +164,7 @@ Abstract base class. Key methods:
 - `cancel(job_id, *, done=False)` — cancel a job by ID (done=True marks as DONE)
 - `cancel_by_name(name_pattern)` — cancel by name pattern (LSF only)
 - `cancel_all(*, done=False)` — cancel all tracked jobs
+- `reconnect()` — rediscover running jobs after a process restart (requires `job_name_prefix`)
 - `poll()` — query scheduler and update job statuses
 - `jobs` / `active_jobs` — properties returning tracked job dicts
 
