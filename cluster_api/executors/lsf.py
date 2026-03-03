@@ -82,8 +82,8 @@ class LSFExecutor(Executor):
 
         out = resources.stdout_path or f"{resources.work_dir}/stdout.%J.log"
         err = resources.stderr_path or f"{resources.work_dir}/stderr.%J.log"
-        lines.append(f"{p} -o {out}")
-        lines.append(f"{p} -e {err}")
+        lines.append(f'{p} -o "{out}"')
+        lines.append(f'{p} -e "{err}"')
 
         # Queue
         queue = resources.queue or self.config.queue
@@ -116,7 +116,7 @@ class LSFExecutor(Executor):
             lines.append(f"{p} -W {walltime}")
 
         # Working directory
-        lines.append(f"{p} -cwd {resources.work_dir}")
+        lines.append(f'{p} -cwd "{resources.work_dir}"')
 
         # Custom cluster options
         if resources.extra_directives:

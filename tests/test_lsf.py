@@ -62,7 +62,7 @@ class TestBuildHeader:
         assert any("-n 4" in line for line in lines)
         assert any("span[hosts=1]" in line for line in lines)
         assert any("-W 08:00" in line for line in lines)
-        assert any("-cwd /scratch" in line for line in lines)
+        assert any('-cwd "/scratch"' in line for line in lines)
 
     def test_single_cpu_no_span(self, lsf_config):
         executor = LSFExecutor(lsf_config)
