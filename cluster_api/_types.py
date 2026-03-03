@@ -34,7 +34,25 @@ _TERMINAL_STATUSES = frozenset({JobStatus.DONE, JobStatus.FAILED, JobStatus.KILL
 
 @dataclass
 class ResourceSpec:
-    """Resource requirements for a job."""
+    """Resource requirements for a job.
+
+    Fields:
+        cpus: Number of CPU cores to request.
+        gpus: Number of GPUs to request.
+        memory: Memory limit as a string with unit, e.g. ``"16GB"`` or ``"500MB"``.
+            Passed directly to the scheduler directive.
+        walltime: Wall-clock time limit, e.g. ``"1:00"`` (h:mm) or ``"24:00:00"``.
+            Format depends on the target scheduler.
+        queue: Scheduler queue / partition name.
+        work_dir: Working directory for the job (defaults to ``os.getcwd()``).
+        stdout_path: Explicit path for stdout log. Overrides the executor's
+            default log naming (see CLAUDE.md § Log File Naming).
+        stderr_path: Explicit path for stderr log. Same override behaviour.
+        extra_directives: Raw scheduler directives injected into the job script
+            header (e.g. ``["#BSUB -R 'rusage[mem=16GB]'"]``).
+        extra_args: Extra command-line arguments appended to the submit command
+            (e.g. ``["-q", "gpu"]`` for ``bsub``).
+    """
 
     cpus: int | None = None
     gpus: int | None = None

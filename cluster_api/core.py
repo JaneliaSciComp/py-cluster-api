@@ -16,8 +16,10 @@ from ._types import ArrayElement, JobRecord, JobStatus, ResourceSpec
 
 logger = logging.getLogger(__name__)
 
+# Check for array element IDs like "12345[1]"
 _ARRAY_ELEMENT_RE = re.compile(r"^(.+)\[(\d+)\]$")
 
+# Check for job names that are unsafe in scheduler job names
 _UNSAFE_NAME_RE = re.compile(r"[^\w\-.]")
 
 
@@ -27,7 +29,37 @@ def _sanitize_job_name(name: str) -> str:
 
 
 class Executor(abc.ABC):
-    """Abstract base for cluster job executors."""
+    """Abstract base for cluster job executors.
+
+    Lifecycle:
+        1. **Construct** — instantiate with a ``ClusterConfig``.
+        2. **Submit** — call :meth:`submit` or :meth:`submit_array` to enqueue
+           jobs.  Each returns a :class:`JobRecord` tracked in-process.
+        3. **Poll** — call :meth:`poll` (usually via :class:`~cluster_api.monitor.Monitor`)
+           to query the scheduler and update every tracked ``JobRecord``.
+        4. **Cancel** — call :meth:`cancel`, :meth:`cancel_all`, or
+           :meth:`cancel_by_name` to kill running jobs.
+
+    Subclass requirements:
+        Must implement:
+            - :meth:`_submit_job` — run the scheduler submit command.
+            - :meth:`_build_status_args` — build the CLI args for a status query.
+            - :meth:`_parse_job_statuses` — parse status output into per-job dicts.
+
+        May override:
+            - :meth:`_submit_array_job` — array submission (default delegates
+              to ``_submit_job``).
+            - :meth:`_cancel_job` — cancel a single job.
+            - :meth:`cancel_by_name` — cancel by name pattern.
+            - :meth:`reconnect` — rediscover running jobs after restart.
+
+    Class attributes:
+        submit_command: CLI executable used for submission (e.g. ``"bsub"``).
+        cancel_command: CLI executable used for cancellation (e.g. ``"bkill"``).
+        status_command: CLI executable used for status queries (e.g. ``"bjobs"``).
+        job_id_regexp: Regex with a ``job_id`` named group, applied to submit
+            output to extract the job ID.
+    """
 
     submit_command: str
     cancel_command: str
