@@ -277,6 +277,15 @@ class LSFExecutor(Executor):
 
         return result
 
+    async def _cancel_job(self, job_id: str, *, done: bool = False) -> None:
+        """Run bkill, with ``-d`` when *done* is True."""
+        cmd = [self.cancel_command]
+        if done:
+            cmd.append("-d")
+        cmd.append(job_id)
+        logger.debug("Running: %s", " ".join(cmd))
+        await self._call(cmd, timeout=self.config.command_timeout)
+
     async def cancel_by_name(self, name_pattern: str) -> None:
         """Cancel jobs matching name pattern via bkill -J."""
         cmd = [self.cancel_command, "-J", name_pattern]

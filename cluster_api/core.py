@@ -170,21 +170,20 @@ class Executor(abc.ABC):
         Args:
             job_id: The job ID to cancel.
             done: If True, mark the job as DONE instead of KILLED.
-                  On LSF this passes ``-d`` to bkill.
+                  Subclasses may translate this into scheduler-specific flags.
         """
-        cmd = [self.cancel_command]
-        if done:
-            cmd.append("-d")
-        cmd.append(job_id)
-        logger.debug("Running: %s", " ".join(cmd))
-        await self._call(cmd, timeout=self.config.command_timeout)
+        await self._cancel_job(job_id, done=done)
         if job_id in self._jobs:
             self._jobs[job_id].status = JobStatus.DONE if done else JobStatus.KILLED
         logger.info("Cancelled job %s (done=%s)", job_id, done)
 
+    async def _cancel_job(self, job_id: str, *, done: bool = False) -> None:
+        """Run the scheduler cancel command. Must be implemented by subclasses."""
+        raise NotImplementedError("cancel is not supported by this executor")
+
     async def cancel_by_name(self, name_pattern: str) -> None:
         """Cancel jobs by name pattern. Override in subclasses for native support."""
-        raise NotImplementedError("cancel_by_name not supported by this executor")
+        raise NotImplementedError("cancel_by_name is not supported by this executor")
 
     async def reconnect(self) -> list[JobRecord]:
         """Reconnect to running jobs and resume tracking them.
@@ -196,7 +195,7 @@ class Executor(abc.ABC):
         Returns:
             List of newly created ``JobRecord`` instances.
         """
-        raise NotImplementedError("reconnect not supported by this executor")
+        raise NotImplementedError("reconnect is not supported by this executor")
 
     async def cancel_all(self, *, done: bool = False) -> None:
         """Cancel all tracked jobs."""
