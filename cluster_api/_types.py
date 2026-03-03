@@ -149,8 +149,8 @@ class JobRecord:
             return JobStatus.RUNNING
 
         # All expected elements accounted for and terminal
-        if JobStatus.KILLED in statuses:
-            return JobStatus.KILLED
         if JobStatus.FAILED in statuses:
             return JobStatus.FAILED
+        if JobStatus.KILLED in statuses:
+            return JobStatus.KILLED
         return JobStatus.DONE
