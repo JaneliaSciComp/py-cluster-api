@@ -106,7 +106,7 @@ JobMonitor (monitor.py)    # async polling loop → callbacks + zombie detection
 - `extra_directives` has two levels with different behaviour:
   - **Config-level** (`ClusterConfig.extra_directives`): appended verbatim to the script header — users must include the full prefix, e.g. `"#BSUB -P myproject"`.
   - **ResourceSpec-level** (`ResourceSpec.extra_directives`): the directive prefix is added automatically, so users write `"-P myproject"` and the executor produces `"#BSUB -P myproject"`.
-- `extra_args` (config-level and per-job) append raw arguments to the submit command line (e.g. `bsub -P myproject script.sh`), bypassing the script entirely.
+- `extra_args` (config-level and per-job) append raw arguments to the submit command line, bypassing the script entirely. Both levels are merged at submit time: config-level args come first, then per-job (`ResourceSpec.extra_args`) args are appended.
 - `directives_skip` filters out unwanted directive lines by substring match.
 - Scripts are written to `{work_dir}/{safe_name}.{counter}.sh` and made executable.
 
