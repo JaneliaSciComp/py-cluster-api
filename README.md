@@ -2,12 +2,17 @@
 
 [![CI](https://github.com/JaneliaSciComp/py-cluster-api/actions/workflows/ci.yml/badge.svg)](https://github.com/JaneliaSciComp/py-cluster-api/actions/workflows/ci.yml)
 
-A Python library for submitting and monitoring jobs on HPC clusters. Supports running arbitrary executables (Nextflow pipelines, Python scripts, Java tools, etc.) on LSF clusters and taking action when jobs complete via async callbacks.
+A Python library for submitting and monitoring jobs on HPC clusters. Supports running arbitrary executables (Nextflow pipelines, Python scripts, Java tools, etc.) on clusters and taking action when jobs complete via async callbacks.
+
+## Executors
+
+* Local Subprocess
+* IBM Platform LSF
+* We will accept PRs that implement and test additional executors (SLURM, etc.)
 
 ## Features
 
 - **Async-first** — built on `asyncio` for non-blocking job submission and monitoring
-- **LSF executor** — submit via `bsub`, monitor via `bjobs -json`, cancel via `bkill`
 - **Local executor** — run jobs as local subprocesses for development and testing, including array jobs
 - **Job monitoring** — polls the scheduler and fires callbacks on job completion, failure, or cancellation
 - **Job arrays** — submit array jobs with per-element log files
