@@ -199,27 +199,32 @@ class LocalExecutor(Executor):
 
     async def cancel(self, job_id: str, *, done: bool = False) -> None:
         """Terminate a local subprocess (or all element processes for an array job)."""
-        # Kill single-job process if present
+        # Collect all live processes for this job (single + array elements)
+        live: list[tuple[str, asyncio.subprocess.Process]] = []
         proc = self._processes.get(job_id)
         if proc and proc.returncode is None:
-            proc.terminate()
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                proc.kill()
-
-        self._close_output_files(job_id)
-
-        # Kill array element processes matching "{job_id}[*]"
+            live.append((job_id, proc))
         prefix = f"{job_id}["
         for key, proc in self._processes.items():
             if key.startswith(prefix) and proc.returncode is None:
-                proc.terminate()
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    proc.kill()
-                self._close_output_files(key)
+                live.append((key, proc))
+
+        # Send SIGTERM to all, then wait concurrently
+        for _key, p in live:
+            p.terminate()
+        if live:
+            tasks = [asyncio.ensure_future(p.wait()) for _key, p in live]
+            _, pending = await asyncio.wait(tasks, timeout=5.0)
+            # SIGKILL any that didn't exit in time
+            for _key, p in live:
+                if p.returncode is None:
+                    p.kill()
+            # Reap the killed processes
+            if pending:
+                await asyncio.wait(pending, timeout=5.0)
+
+        for key, _p in live:
+            self._close_output_files(key)
 
         target_status = JobStatus.DONE if done else JobStatus.KILLED
         if job_id in self._jobs:
