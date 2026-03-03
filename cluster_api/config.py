@@ -109,7 +109,12 @@ def load_config(
 
     profiles = raw.pop("profiles", {})
 
-    if profile and profile in profiles:
+    if profile:
+        if profile not in profiles:
+            available = ", ".join(sorted(profiles)) if profiles else "(none)"
+            raise ValueError(
+                f"Unknown profile {profile!r}; available profiles: {available}"
+            )
         raw = {**raw, **profiles[profile]}
 
     if overrides:
