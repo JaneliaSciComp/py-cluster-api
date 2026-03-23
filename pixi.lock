@@ -5,6 +5,8 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     indexes:
     - https://pypi.org/simple
+    options:
+      pypi-prerelease-mode: if-necessary-or-explicit
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
@@ -52,6 +54,8 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     indexes:
     - https://pypi.org/simple
+    options:
+      pypi-prerelease-mode: if-necessary-or-explicit
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
@@ -842,7 +846,7 @@ packages:
 - pypi: ./
   name: py-cluster-api
   version: 0.3.0
-  sha256: e2063daf789767a34e56a90415c2c5375777b46afbc7635de4a56c48984c6ce1
+  sha256: f1d6a42303e6af7387f900ec6f3daf2cda2b4556fdc57b3b6e576a3405e30fd4
   requires_dist:
   - pyyaml
   - pytest ; extra == 'test'
@@ -851,7 +855,6 @@ packages:
   - build ; extra == 'release'
   - twine ; extra == 'release'
   requires_python: '>=3.10'
-  editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/pycparser-2.22-pyh29332c3_1.conda
   sha256: 79db7928d13fab2d892592223d7570f5061c192f27b9febd1a418427b719acc6
   md5: 12c566707c80111f9799308d9e265aef
