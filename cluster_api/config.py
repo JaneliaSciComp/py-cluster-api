@@ -58,6 +58,7 @@ class ClusterConfig:
     completed_retention_minutes: float = 10.0
     command_timeout: float = 100.0
     suppress_job_email: bool = True
+    poll_all_users: bool = False
 
 
 _CONFIG_SEARCH_PATHS = [

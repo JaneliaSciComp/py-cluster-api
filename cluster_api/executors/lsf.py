@@ -220,6 +220,8 @@ class LSFExecutor(Executor):
     def _build_status_args(self) -> list[str]:
         """Build bjobs command with JSON output."""
         args = [self.status_command]
+        if self.config.poll_all_users:
+            args.extend(["-u", "all"])
         if self._prefix:
             args.extend(["-J", f"{self._prefix}-*"])
         args.extend(["-a", "-o", _BJOBS_FIELDS, "-json"])
@@ -312,13 +314,16 @@ class LSFExecutor(Executor):
                 "Cannot reconnect: no job_name_prefix was configured. "
                 "Set job_name_prefix in config to enable reconnection."
             )
-        return [
-            self.status_command,
+        args = [self.status_command]
+        if self.config.poll_all_users:
+            args.extend(["-u", "all"])
+        args.extend([
             "-J", f"{self._prefix}-*",
             "-a",
             "-o", _BJOBS_RECONNECT_FIELDS,
             "-json",
-        ]
+        ])
+        return args
 
     async def reconnect(self) -> list[JobRecord]:
         """Reconnect to running jobs and resume tracking them.
