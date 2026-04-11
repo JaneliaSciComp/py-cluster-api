@@ -739,3 +739,89 @@ class TestArrayElementPolling:
         assert job.status == JobStatus.FAILED
         assert job.failed_element_indices == [2]
         assert job.array_elements[2].exit_code == 1
+
+
+class TestPollPartialBjobsFailure:
+    """bjobs exits non-zero when some job IDs are gone, but still returns
+    valid JSON for the remaining jobs.  poll() should parse those results
+    instead of skipping the entire cycle."""
+
+    async def test_poll_uses_stdout_from_failed_bjobs(self, work_dir):
+        """Two tracked jobs; bjobs fails because one ID is gone, but returns
+        valid JSON for the other.  The surviving job should still be updated."""
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig(
+            executor="lsf", lsf_units="MB",
+            command_timeout=10.0, poll_interval=0.5,
+        )
+        executor = LSFExecutor(config)
+
+        # Submit two jobs
+        with patch.object(
+            executor, "_call", new_callable=AsyncMock,
+            return_value="Job <100> is submitted to queue <normal>.",
+        ):
+            job1 = await executor.submit(
+                command="echo a", name="a",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+        with patch.object(
+            executor, "_call", new_callable=AsyncMock,
+            return_value="Job <200> is submitted to queue <normal>.",
+        ):
+            job2 = await executor.submit(
+                command="echo b", name="b",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+
+        # bjobs returns DONE for job 100 but exits non-zero because job 200
+        # has been cleaned from LSF's history.
+        bjobs_stdout = json.dumps({"RECORDS": [
+            {"JOBID": "100", "STAT": "DONE", "EXIT_CODE": "0",
+             "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+        ]})
+
+        with patch.object(
+            executor, "_call", new_callable=AsyncMock,
+            side_effect=CommandFailedError(
+                "Command failed (exit 255): ['bjobs', ...]\nstderr: Job <200> is not found",
+                stdout=bjobs_stdout,
+            ),
+        ):
+            statuses = await executor.poll()
+
+        assert job1.status == JobStatus.DONE
+        assert statuses["100"] == JobStatus.DONE
+        # job2 stays PENDING (not seen, but not incorrectly skipped either)
+        assert job2.status == JobStatus.PENDING
+
+    async def test_poll_skips_when_no_stdout(self, work_dir):
+        """If bjobs fails and produces no stdout, poll skips as before."""
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig(
+            executor="lsf", lsf_units="MB",
+            command_timeout=10.0, poll_interval=0.5,
+        )
+        executor = LSFExecutor(config)
+
+        with patch.object(
+            executor, "_call", new_callable=AsyncMock,
+            return_value="Job <100> is submitted to queue <normal>.",
+        ):
+            job = await executor.submit(
+                command="echo a", name="a",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+
+        with patch.object(
+            executor, "_call", new_callable=AsyncMock,
+            side_effect=CommandFailedError("Command failed", stdout=""),
+        ):
+            statuses = await executor.poll()
+
+        # Should skip gracefully, job unchanged
+        assert job.status == JobStatus.PENDING
+        assert statuses["100"] == JobStatus.PENDING

@@ -12,6 +12,10 @@ class CommandTimeoutError(ClusterAPIError):
 class CommandFailedError(ClusterAPIError):
     """A subprocess command returned a non-zero exit code."""
 
+    def __init__(self, message: str, stdout: str = "") -> None:
+        super().__init__(message)
+        self.stdout = stdout
+
 
 class SubmitError(ClusterAPIError):
     """Failed to submit a job or parse its ID from scheduler output."""

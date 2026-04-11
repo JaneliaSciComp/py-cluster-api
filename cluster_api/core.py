@@ -257,8 +257,18 @@ class Executor(abc.ABC):
         args = self._build_status_args()
         try:
             out = await self._call(args, timeout=self.config.command_timeout)
+        except CommandFailedError as e:
+            # bjobs exits non-zero when some job IDs are gone, but still
+            # writes valid JSON for the found jobs to stdout.  Try to
+            # parse whatever we got before giving up.
+            if e.stdout:
+                logger.debug("Status query returned non-zero but produced output, parsing partial results")
+                out = e.stdout
+            else:
+                logger.warning("Status query failed, skipping poll cycle: %s", e)
+                return {jid: r.status for jid, r in self._jobs.items()}
         except (ClusterAPIError, OSError) as e:
-            logger.warning("Status query failed, skipping poll cycle: %s", e, exc_info=True)
+            logger.warning("Status query failed, skipping poll cycle: %s", e)
             return {jid: r.status for jid, r in self._jobs.items()}
 
         statuses = self._parse_job_statuses(out)
@@ -354,7 +364,8 @@ class Executor(abc.ABC):
 
         if proc.returncode != 0:
             raise CommandFailedError(
-                f"Command failed (exit {proc.returncode}): {cmd}\nstderr: {err}"
+                f"Command failed (exit {proc.returncode}): {cmd}\nstderr: {err}",
+                stdout=out,
             )
 
         return out
