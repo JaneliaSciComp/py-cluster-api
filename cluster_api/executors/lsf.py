@@ -203,8 +203,6 @@ class LSFExecutor(Executor):
         for line in lines:
             if line.startswith(self.directive_prefix):
                 line = line.replace(f"-J {name}", f"-J {array_name}")
-                line = line.replace(f"{name}.out", f"{name}.%I.out")
-                line = line.replace(f"{name}.err", f"{name}.%I.err")
                 line = line.replace("stdout.%J.log", "stdout.%J.%I.log")
                 line = line.replace("stderr.%J.log", "stderr.%J.%I.log")
             new_lines.append(line)
