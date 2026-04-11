@@ -316,6 +316,12 @@ class Executor(abc.ABC):
         if env:
             full_env = {**os.environ, **env}
 
+        cmd_str = " ".join(cmd)
+        if stdin_file:
+            logger.debug("Running: %s < %s", cmd_str, stdin_file)
+        else:
+            logger.debug("Running: %s", cmd_str)
+
         stdin_fh = None
         try:
             if stdin_file:

@@ -146,7 +146,6 @@ class LSFExecutor(Executor):
         """Run bsub with a script file and return raw output."""
         submit_env = self._build_submit_env(env)
         cmd = [self.submit_command, *(extra_args or [])]
-        logger.debug("Running: %s < %s", cmd, script_path)
         return await self._call(
             cmd,
             stdin_file=script_path,
@@ -285,13 +284,11 @@ class LSFExecutor(Executor):
         if done:
             cmd.append("-d")
         cmd.append(job_id)
-        logger.debug("Running: %s", " ".join(cmd))
         await self._call(cmd, timeout=self.config.command_timeout)
 
     async def cancel_by_name(self, name_pattern: str) -> None:
         """Cancel jobs matching name pattern via bkill -J."""
         cmd = [self.cancel_command, "-J", name_pattern]
-        logger.debug("Running: %s", " ".join(cmd))
         try:
             await self._call(cmd, timeout=self.config.command_timeout)
         except CommandFailedError as e:
