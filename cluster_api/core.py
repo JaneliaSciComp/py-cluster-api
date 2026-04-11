@@ -232,7 +232,15 @@ class Executor(abc.ABC):
     async def cancel_all(self, *, done: bool = False) -> None:
         """Cancel all tracked jobs."""
         to_cancel = [jid for jid, r in self._jobs.items() if not r.is_terminal]
-        await asyncio.gather(*(self.cancel(jid, done=done) for jid in to_cancel))
+        results = await asyncio.gather(
+            *(self.cancel(jid, done=done) for jid in to_cancel),
+            return_exceptions=True,
+        )
+        errors = [r for r in results if isinstance(r, Exception)]
+        if errors:
+            logger.warning("cancel_all: %d/%d cancellations failed", len(errors), len(to_cancel))
+            for err in errors:
+                logger.debug("cancel_all error: %s", err)
 
     # --- Status polling ---
 
