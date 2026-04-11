@@ -29,9 +29,9 @@ _LSF_STATUS_MAP: dict[str, JobStatus] = {
     "UNKWN": JobStatus.UNKNOWN,
     "WAIT": JobStatus.PENDING,
     "PROV": JobStatus.PENDING,
-    "USUSP": JobStatus.PENDING,
+    "USUSP": JobStatus.RUNNING,
     "PSUSP": JobStatus.PENDING,
-    "SSUSP": JobStatus.PENDING,
+    "SSUSP": JobStatus.RUNNING,
 }
 
 _BJOBS_FIELDS = (

@@ -248,14 +248,23 @@ class TestParseJobStatuses:
 
     def test_suspended_states(self, lsf_config):
         executor = LSFExecutor(lsf_config)
-        for lsf_stat in ("USUSP", "PSUSP", "SSUSP"):
+        # USUSP/SSUSP map to RUNNING (job had already started)
+        for lsf_stat in ("USUSP", "SSUSP"):
             output = self._make_bjobs_json([
                 {"JOBID": "200", "STAT": lsf_stat, "EXIT_CODE": "-",
                  "EXEC_HOST": "-", "MAX_MEM": "-",
                  "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
             ])
             result = executor._parse_job_statuses(output)
-            assert result["200"][0] == JobStatus.PENDING
+            assert result["200"][0] == JobStatus.RUNNING
+        # PSUSP maps to PENDING (job was suspended before running)
+        output = self._make_bjobs_json([
+            {"JOBID": "200", "STAT": "PSUSP", "EXIT_CODE": "-",
+             "EXEC_HOST": "-", "MAX_MEM": "-",
+             "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
+        ])
+        result = executor._parse_job_statuses(output)
+        assert result["200"][0] == JobStatus.PENDING
 
 
 class TestBuildStatusArgs:
