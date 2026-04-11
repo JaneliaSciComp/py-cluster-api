@@ -35,11 +35,6 @@ _LSF_STATUS_MAP: dict[str, JobStatus] = {
 }
 
 _BJOBS_FIELDS = (
-    "jobid stat exit_code exec_host max_mem "
-    "submit_time start_time finish_time"
-)
-
-_BJOBS_RECONNECT_FIELDS = (
     "jobid job_name stat exit_code exec_host max_mem "
     "submit_time start_time finish_time"
 )
@@ -318,7 +313,7 @@ class LSFExecutor(Executor):
         args.extend([
             "-J", f"{self._prefix}-*",
             "-a",
-            "-o", _BJOBS_RECONNECT_FIELDS,
+            "-o", _BJOBS_FIELDS,
             "-json",
         ])
         return args
