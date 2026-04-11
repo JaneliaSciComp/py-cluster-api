@@ -224,6 +224,9 @@ class LSFExecutor(Executor):
         if self._prefix:
             args.extend(["-J", f"{self._prefix}-*"])
         args.extend(["-a", "-o", _BJOBS_FIELDS, "-json"])
+        if not self._prefix:
+            active_ids = [jid for jid, r in self._jobs.items() if not r.is_terminal]
+            args.extend(active_ids)
         return args
 
     def _parse_job_statuses(
