@@ -232,7 +232,15 @@ class Executor(abc.ABC):
     async def cancel_all(self, *, done: bool = False) -> None:
         """Cancel all tracked jobs."""
         to_cancel = [jid for jid, r in self._jobs.items() if not r.is_terminal]
-        await asyncio.gather(*(self.cancel(jid, done=done) for jid in to_cancel))
+        results = await asyncio.gather(
+            *(self.cancel(jid, done=done) for jid in to_cancel),
+            return_exceptions=True,
+        )
+        errors = [r for r in results if isinstance(r, Exception)]
+        if errors:
+            logger.warning("cancel_all: %d/%d cancellations failed", len(errors), len(to_cancel))
+            for err in errors:
+                logger.debug("cancel_all error: %s", err)
 
     # --- Status polling ---
 
@@ -257,8 +265,18 @@ class Executor(abc.ABC):
         args = self._build_status_args()
         try:
             out = await self._call(args, timeout=self.config.command_timeout)
+        except CommandFailedError as e:
+            # bjobs exits non-zero when some job IDs are gone, but still
+            # writes valid JSON for the found jobs to stdout.  Try to
+            # parse whatever we got before giving up.
+            if e.stdout:
+                logger.debug("Status query returned non-zero but produced output, parsing partial results")
+                out = e.stdout
+            else:
+                logger.warning("Status query failed, skipping poll cycle: %s", e)
+                return {jid: r.status for jid, r in self._jobs.items()}
         except (ClusterAPIError, OSError) as e:
-            logger.warning("Status query failed, skipping poll cycle: %s", e, exc_info=True)
+            logger.warning("Status query failed, skipping poll cycle: %s", e)
             return {jid: r.status for jid, r in self._jobs.items()}
 
         statuses = self._parse_job_statuses(out)
@@ -316,6 +334,12 @@ class Executor(abc.ABC):
         if env:
             full_env = {**os.environ, **env}
 
+        cmd_str = " ".join(cmd)
+        if stdin_file:
+            logger.debug("Running: %s < %s", cmd_str, stdin_file)
+        else:
+            logger.debug("Running: %s", cmd_str)
+
         stdin_fh = None
         try:
             if stdin_file:
@@ -348,7 +372,8 @@ class Executor(abc.ABC):
 
         if proc.returncode != 0:
             raise CommandFailedError(
-                f"Command failed (exit {proc.returncode}): {cmd}\nstderr: {err}"
+                f"Command failed (exit {proc.returncode}): {cmd}\nstderr: {err}",
+                stdout=out,
             )
 
         return out

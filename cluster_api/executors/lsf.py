@@ -29,17 +29,12 @@ _LSF_STATUS_MAP: dict[str, JobStatus] = {
     "UNKWN": JobStatus.UNKNOWN,
     "WAIT": JobStatus.PENDING,
     "PROV": JobStatus.PENDING,
-    "USUSP": JobStatus.PENDING,
+    "USUSP": JobStatus.RUNNING,
     "PSUSP": JobStatus.PENDING,
-    "SSUSP": JobStatus.PENDING,
+    "SSUSP": JobStatus.RUNNING,
 }
 
 _BJOBS_FIELDS = (
-    "jobid stat exit_code exec_host max_mem "
-    "submit_time start_time finish_time"
-)
-
-_BJOBS_RECONNECT_FIELDS = (
     "jobid job_name stat exit_code exec_host max_mem "
     "submit_time start_time finish_time"
 )
@@ -146,7 +141,6 @@ class LSFExecutor(Executor):
         """Run bsub with a script file and return raw output."""
         submit_env = self._build_submit_env(env)
         cmd = [self.submit_command, *(extra_args or [])]
-        logger.debug("Running: %s < %s", cmd, script_path)
         return await self._call(
             cmd,
             stdin_file=script_path,
@@ -204,8 +198,6 @@ class LSFExecutor(Executor):
         for line in lines:
             if line.startswith(self.directive_prefix):
                 line = line.replace(f"-J {name}", f"-J {array_name}")
-                line = line.replace(f"{name}.out", f"{name}.%I.out")
-                line = line.replace(f"{name}.err", f"{name}.%I.err")
                 line = line.replace("stdout.%J.log", "stdout.%J.%I.log")
                 line = line.replace("stderr.%J.log", "stderr.%J.%I.log")
             new_lines.append(line)
@@ -225,6 +217,9 @@ class LSFExecutor(Executor):
         if self._prefix:
             args.extend(["-J", f"{self._prefix}-*"])
         args.extend(["-a", "-o", _BJOBS_FIELDS, "-json"])
+        if not self._prefix:
+            active_ids = [jid for jid, r in self._jobs.items() if not r.is_terminal]
+            args.extend(active_ids)
         return args
 
     def _parse_job_statuses(
@@ -285,13 +280,11 @@ class LSFExecutor(Executor):
         if done:
             cmd.append("-d")
         cmd.append(job_id)
-        logger.debug("Running: %s", " ".join(cmd))
         await self._call(cmd, timeout=self.config.command_timeout)
 
     async def cancel_by_name(self, name_pattern: str) -> None:
         """Cancel jobs matching name pattern via bkill -J."""
         cmd = [self.cancel_command, "-J", name_pattern]
-        logger.debug("Running: %s", " ".join(cmd))
         try:
             await self._call(cmd, timeout=self.config.command_timeout)
         except CommandFailedError as e:
@@ -320,7 +313,7 @@ class LSFExecutor(Executor):
         args.extend([
             "-J", f"{self._prefix}-*",
             "-a",
-            "-o", _BJOBS_RECONNECT_FIELDS,
+            "-o", _BJOBS_FIELDS,
             "-json",
         ])
         return args
