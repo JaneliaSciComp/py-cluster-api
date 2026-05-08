@@ -215,3 +215,32 @@ class TestCancelAll:
 
         await executor.cancel_all(done=True)
         assert job.status == JobStatus.DONE
+
+
+class TestTrack:
+
+    def test_track_default_status(self, default_config):
+        executor = LocalExecutor(default_config)
+        record = executor.track("12345")
+        assert record.job_id == "12345"
+        assert record.status == JobStatus.PENDING
+        assert executor.jobs["12345"] is record
+
+    def test_track_with_status(self, default_config):
+        executor = LocalExecutor(default_config)
+        record = executor.track("99", status=JobStatus.RUNNING)
+        assert record.status == JobStatus.RUNNING
+
+    def test_track_replaces_existing_record(self, default_config):
+        executor = LocalExecutor(default_config)
+        first = executor.track("7", status=JobStatus.PENDING)
+        second = executor.track("7", status=JobStatus.RUNNING)
+        assert first is not second
+        assert executor.jobs["7"] is second
+        assert executor.jobs["7"].status == JobStatus.RUNNING
+
+    def test_remove_job_after_track(self, default_config):
+        executor = LocalExecutor(default_config)
+        executor.track("42")
+        executor.remove_job("42")
+        assert "42" not in executor.jobs
