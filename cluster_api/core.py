@@ -380,6 +380,43 @@ class Executor(abc.ABC):
 
     # --- Properties ---
 
+    def track(
+        self,
+        job_id: str,
+        status: JobStatus = JobStatus.PENDING,
+    ) -> JobRecord:
+        """Begin tracking a job by ID without re-submitting it.
+
+        Use this to seed the executor from a persistent store (e.g. a
+        database) so subsequent :meth:`poll` and :meth:`cancel` calls can
+        act on jobs that were submitted by a previous process.
+
+        The created :class:`JobRecord` has minimal fields populated; the
+        next :meth:`poll` will fill in ``exec_host``, ``exit_code``,
+        ``start_time``, etc. from the scheduler. ``name`` and ``command``
+        are not recoverable from the scheduler in general — set them on
+        the returned record if you need them.
+
+        Replaces any existing record with the same ``job_id``.
+
+        Args:
+            job_id: Scheduler-assigned job ID to track.
+            status: Initial status. Use the last status known to your
+                persistent store so :meth:`poll` doesn't transiently
+                report the job as PENDING.
+
+        Returns:
+            The newly tracked :class:`JobRecord`.
+        """
+        record = JobRecord(
+            job_id=job_id,
+            name="",
+            command="",
+            status=status,
+        )
+        self._jobs[job_id] = record
+        return record
+
     def remove_job(self, job_id: str) -> None:
         """Remove a job from tracking."""
         self._jobs.pop(job_id, None)
