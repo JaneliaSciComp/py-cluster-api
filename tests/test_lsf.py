@@ -364,6 +364,46 @@ class TestSubmission:
             assert env.get("LSB_JOB_REPORT_MAIL") == "N"
 
 
+    async def test_submit_clean_env_login_shell(self, lsf_config, work_dir):
+        """inherit_env=False adds -env none; login_shell adds -L /bin/bash;
+        explicit env vars move into the script since bsub won't copy them."""
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <12345> is submitted to queue <normal>.",
+        ) as mock_call:
+            job = await executor.submit(
+                command="echo hello", name="my-job",
+                resources=ResourceSpec(work_dir=work_dir),
+                env={"FOO": "bar baz"},
+                inherit_env=False, login_shell=True,
+            )
+            cmd = mock_call.call_args[0][0]
+            assert cmd[cmd.index("-env") + 1] == "none"
+            assert cmd[cmd.index("-L") + 1] == "/bin/bash"
+            with open(job.script_path) as f:
+                script = f.read()
+            assert "export FOO='bar baz'" in script
+            # Exports must precede the command
+            assert script.index("export FOO") < script.index("echo hello")
+
+    async def test_submit_default_env_args_absent(self, lsf_config, work_dir):
+        """Default submission keeps bsub's normal environment handling."""
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <12345> is submitted to queue <normal>.",
+        ) as mock_call:
+            await executor.submit(
+                command="echo hello", name="my-job",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+            cmd = mock_call.call_args[0][0]
+            assert "-env" not in cmd
+            assert "-L" not in cmd
+
     async def test_submit_array(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
         with patch.object(

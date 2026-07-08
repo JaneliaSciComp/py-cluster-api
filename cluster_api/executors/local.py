@@ -17,6 +17,22 @@ from ..script import render_script, write_script
 
 logger = logging.getLogger(__name__)
 
+# PATH for jobs that don't inherit the submitting process's environment;
+# mirrors what cron/sshd hand a fresh process. A login shell's profile will
+# prepend the user's own entries on top of this.
+_BASELINE_PATH = "/usr/local/bin:/usr/bin:/bin"
+
+# Identity and locale variables that describe the *user*, not the submitting
+# process, so they are safe to carry into a non-inheriting job.
+_BASELINE_KEYS = ("HOME", "USER", "LOGNAME", "SHELL", "LANG", "TERM")
+
+
+def _baseline_env(env: dict[str, str] | None) -> dict[str, str]:
+    """Minimal job environment for inherit_env=False submissions."""
+    base = {k: os.environ[k] for k in _BASELINE_KEYS if k in os.environ}
+    base["PATH"] = _BASELINE_PATH
+    return {**base, **(env or {})}
+
 
 class LocalExecutor(Executor):
     """Runs jobs as local bash subprocesses. Useful for testing."""
@@ -49,6 +65,8 @@ class LocalExecutor(Executor):
         env: dict[str, str] | None = None,
         *,
         cwd: str | None = None,
+        inherit_env: bool = True,
+        login_shell: bool = False,
     ) -> tuple[str, str | None]:
         """Render script, write to disk, run as a background subprocess."""
         header = self.build_header(name, resources)
@@ -58,13 +76,17 @@ class LocalExecutor(Executor):
         job_id = str(self._next_id)
         self._next_id += 1
 
-        full_env = {**os.environ, **(env or {})}
+        if inherit_env:
+            full_env = {**os.environ, **(env or {})}
+        else:
+            full_env = _baseline_env(env)
+        bash_cmd = ["bash", "-l", script_path] if login_shell else ["bash", script_path]
 
         # Write stdout/stderr directly to log files for real-time access
         stdout_dest, stderr_dest = self._open_output_files(resources, job_id=job_id)
 
         proc = await asyncio.create_subprocess_exec(
-            "bash", script_path,
+            *bash_cmd,
             stdout=stdout_dest,
             stderr=stderr_dest,
             env=full_env,
@@ -86,6 +108,8 @@ class LocalExecutor(Executor):
         max_concurrent: int | None = None,
         *,
         cwd: str | None = None,
+        inherit_env: bool = True,
+        login_shell: bool = False,
     ) -> tuple[str, str | None]:
         """Spawn one subprocess per array element with ARRAY_INDEX env var."""
         if max_concurrent is not None:
@@ -101,7 +125,11 @@ class LocalExecutor(Executor):
         job_id = str(self._next_id)
         self._next_id += 1
 
-        full_env = {**os.environ, **(env or {})}
+        if inherit_env:
+            full_env = {**os.environ, **(env or {})}
+        else:
+            full_env = _baseline_env(env)
+        bash_cmd = ["bash", "-l", script_path] if login_shell else ["bash", script_path]
 
         for index in range(array_range[0], array_range[1] + 1):
             element_env = {**full_env, "ARRAY_INDEX": str(index)}
@@ -109,7 +137,7 @@ class LocalExecutor(Executor):
                 resources, job_id=job_id, element_index=index,
             )
             proc = await asyncio.create_subprocess_exec(
-                "bash", script_path,
+                *bash_cmd,
                 stdout=stdout_dest,
                 stderr=stderr_dest,
                 env=element_env,
