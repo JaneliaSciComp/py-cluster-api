@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import re
+import shlex
 from datetime import datetime, timezone
 from typing import Any
 
@@ -134,6 +135,33 @@ class LSFExecutor(Executor):
             args.extend(resources.extra_args)
         return args
 
+    @staticmethod
+    def _env_control_args(inherit_env: bool, login_shell: bool) -> list[str]:
+        """bsub args controlling the job's starting environment."""
+        args: list[str] = []
+        if not inherit_env:
+            # Don't copy the submitting process's environment into the job;
+            # it starts from scheduler-provided variables only.
+            args.extend(["-env", "none"])
+        if login_shell:
+            # Initialize the execution environment through the user's login
+            # shell, as an SSH session to the node would.
+            args.extend(["-L", "/bin/bash"])
+        return args
+
+    @staticmethod
+    def _env_prologue(env: dict[str, str] | None, inherit_env: bool,
+                      prologue: list[str] | None) -> list[str] | None:
+        """Fold explicit env vars into the script when bsub won't copy them.
+
+        With ``-env none`` the submission environment never reaches the job,
+        so variables passed via *env* must be exported by the script itself.
+        """
+        if inherit_env or not env:
+            return prologue
+        exports = [f"export {k}={shlex.quote(v)}" for k, v in env.items()]
+        return [*exports, *(prologue or [])]
+
     async def _bsub(
         self, script_path: str, env: dict[str, str] | None,
         extra_args: list[str] | None = None,
@@ -158,13 +186,17 @@ class LSFExecutor(Executor):
         env: dict[str, str] | None = None,
         *,
         cwd: str | None = None,
+        inherit_env: bool = True,
+        login_shell: bool = False,
     ) -> tuple[str, str | None]:
         """Render script, write to disk, submit via bsub."""
         header = self.build_header(name, resources)
+        prologue = self._env_prologue(env, inherit_env, prologue)
         script = render_script(self.config, command, header, prologue, epilogue)
         script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
         extra_args = self._collect_extra_args(resources)
+        extra_args.extend(self._env_control_args(inherit_env, login_shell))
         out = await self._bsub(script_path, env, extra_args)
         return self._job_id_from_submit_output(out), script_path
 
@@ -180,9 +212,12 @@ class LSFExecutor(Executor):
         max_concurrent: int | None = None,
         *,
         cwd: str | None = None,
+        inherit_env: bool = True,
+        login_shell: bool = False,
     ) -> tuple[str, str | None]:
         """Render script, rewrite for array syntax, submit via bsub."""
         header = self.build_header(name, resources)
+        prologue = self._env_prologue(env, inherit_env, prologue)
         script = render_script(self.config, command, header, prologue, epilogue)
         script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
@@ -206,6 +241,7 @@ class LSFExecutor(Executor):
             f.write(content)
 
         extra_args = self._collect_extra_args(resources)
+        extra_args.extend(self._env_control_args(inherit_env, login_shell))
         out = await self._bsub(script_path, env, extra_args)
         return self._job_id_from_submit_output(out), script_path
 
