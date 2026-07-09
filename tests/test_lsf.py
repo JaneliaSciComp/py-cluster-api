@@ -288,6 +288,40 @@ class TestBuildStatusArgs:
         assert "-json" in args
         assert "-J" not in args
 
+    def test_status_args_prefix_with_tracked_ids(self, lsf_config):
+        """Tracked jobs are queried by explicit ID even when a name prefix
+        is configured. A -J name filter without -u all only returns the
+        calling user's jobs, so relying on it silently hides other users'
+        tracked jobs; explicit IDs are visible across users."""
+        executor = LSFExecutor(lsf_config)
+        executor.track("101", status=JobStatus.PENDING)
+        executor.track("102", status=JobStatus.RUNNING)
+        executor.track("103", status=JobStatus.DONE)  # terminal: not queried
+
+        args = executor._build_status_args()
+        assert "-J" not in args
+        assert "test-*" not in args
+        assert "101" in args
+        assert "102" in args
+        assert "103" not in args
+        # Job IDs must come after all options
+        assert args.index("101") > args.index("-json")
+
+    def test_status_args_prefix_with_tracked_ids_poll_all_users(self):
+        from cluster_api.config import ClusterConfig
+
+        config = ClusterConfig(
+            executor="lsf", lsf_units="MB",
+            job_name_prefix="test", poll_all_users=True,
+        )
+        executor = LSFExecutor(config)
+        executor.track("101", status=JobStatus.PENDING)
+        args = executor._build_status_args()
+        assert "-u" in args
+        assert "all" in args
+        assert "-J" not in args
+        assert "101" in args
+
 
 class TestSubmission:
 

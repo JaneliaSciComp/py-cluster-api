@@ -210,16 +210,26 @@ class LSFExecutor(Executor):
         return self._job_id_from_submit_output(out), script_path
 
     def _build_status_args(self) -> list[str]:
-        """Build bjobs command with JSON output."""
+        """Build bjobs command with JSON output.
+
+        When jobs are being tracked, always query their IDs explicitly: LSF
+        resolves explicit job IDs across user boundaries, whereas a
+        name-filtered query (``-J``) returns only the calling user's jobs
+        without ``-u all`` — so polling other users' jobs through one user's
+        account would silently miss them. Combining ``-J`` with explicit IDs
+        is an intersection, which would hide any tracked job whose name does
+        not match the prefix, so the prefix filter is applied only when there
+        is nothing tracked yet; :meth:`reconnect` has its own query builder
+        for name-based discovery.
+        """
         args = [self.status_command]
         if self.config.poll_all_users:
             args.extend(["-u", "all"])
-        if self._prefix:
+        active_ids = [jid for jid, r in self._jobs.items() if not r.is_terminal]
+        if not active_ids and self._prefix:
             args.extend(["-J", f"{self._prefix}-*"])
         args.extend(["-a", "-o", _BJOBS_FIELDS, "-json"])
-        if not self._prefix:
-            active_ids = [jid for jid, r in self._jobs.items() if not r.is_terminal]
-            args.extend(active_ids)
+        args.extend(active_ids)
         return args
 
     def _parse_job_statuses(
