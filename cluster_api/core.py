@@ -82,14 +82,27 @@ class Executor(abc.ABC):
         epilogue: list[str] | None = None,
         env: dict[str, str] | None = None,
         metadata: dict[str, Any] | None = None,
+        inherit_env: bool = True,
+        login_shell: bool = False,
     ) -> JobRecord:
-        """Submit a job to the scheduler."""
+        """Submit a job to the scheduler.
+
+        Args:
+            inherit_env: When True (default), the job inherits the submitting
+                process's environment. When False, the job starts from a
+                minimal environment: only *env* plus scheduler-provided
+                variables reach the job.
+            login_shell: When True, the job runs under a login shell so the
+                target user's own profile builds the environment (PATH,
+                modules, conda), as if they had SSH'd to the node.
+        """
         resources = resources or ResourceSpec()
         full_name = _sanitize_job_name(f"{self._prefix}-{name}" if self._prefix else name)
 
         job_id, script_path = await self._submit_job(
             command, full_name, resources, prologue, epilogue, env,
             cwd=resources.work_dir,
+            inherit_env=inherit_env, login_shell=login_shell,
         )
 
         record = JobRecord(
@@ -117,6 +130,8 @@ class Executor(abc.ABC):
         env: dict[str, str] | None = None,
         metadata: dict[str, Any] | None = None,
         max_concurrent: int | None = None,
+        inherit_env: bool = True,
+        login_shell: bool = False,
     ) -> JobRecord:
         """Submit a job array to the scheduler."""
         resources = resources or ResourceSpec()
@@ -125,6 +140,7 @@ class Executor(abc.ABC):
         job_id, script_path = await self._submit_array_job(
             command, full_name, array_range, resources, prologue, epilogue,
             env, max_concurrent, cwd=resources.work_dir,
+            inherit_env=inherit_env, login_shell=login_shell,
         )
 
         meta = {**(metadata or {}), "array_range": array_range}
@@ -159,6 +175,8 @@ class Executor(abc.ABC):
         env: dict[str, str] | None = None,
         *,
         cwd: str | None = None,
+        inherit_env: bool = True,
+        login_shell: bool = False,
     ) -> tuple[str, str | None]:
         """Submit a single job.
 
@@ -179,10 +197,13 @@ class Executor(abc.ABC):
         max_concurrent: int | None = None,
         *,
         cwd: str | None = None,
+        inherit_env: bool = True,
+        login_shell: bool = False,
     ) -> tuple[str, str | None]:
         """Submit an array job. Override in subclasses."""
         return await self._submit_job(
             command, name, resources, prologue, epilogue, env, cwd=cwd,
+            inherit_env=inherit_env, login_shell=login_shell,
         )
 
     def _job_id_from_submit_output(self, out: str) -> str:

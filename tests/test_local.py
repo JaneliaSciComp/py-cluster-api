@@ -43,6 +43,54 @@ class TestLocalSubmitAndPoll:
         assert job.exit_code == 1
 
 
+    async def test_submit_clean_env(self, default_config, work_dir, monkeypatch):
+        """inherit_env=False keeps the submitter's environment out of the job."""
+        monkeypatch.setenv("PIXI_PROJECT_MANIFEST", "/tmp/poison.toml")
+        monkeypatch.setenv("SECRET_TOKEN", "leaked")
+        executor = LocalExecutor(default_config)
+        out_file = Path(work_dir) / "env.txt"
+        job = await executor.submit(
+            command=f"printenv > {out_file}", name="cleanenv-test",
+            resources=ResourceSpec(work_dir=work_dir),
+            env={"EXPLICIT_VAR": "yes"},
+            inherit_env=False,
+        )
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+        await executor.poll()
+        assert job.status == JobStatus.DONE
+
+        content = out_file.read_text()
+        assert "PIXI_PROJECT_MANIFEST" not in content
+        assert "SECRET_TOKEN" not in content
+        assert "EXPLICIT_VAR=yes" in content
+        assert "HOME=" in content
+        assert "PATH=/usr/local/bin:/usr/bin:/bin" in content
+
+    async def test_submit_login_shell_invocation(self, default_config, work_dir, monkeypatch):
+        """login_shell=True runs the script under bash -l."""
+        import cluster_api.executors.local as local_mod
+
+        recorded: list[tuple[str, ...]] = []
+        real_exec = asyncio.create_subprocess_exec
+
+        async def recording_exec(*args, **kwargs):
+            recorded.append(args)
+            return await real_exec(*args, **kwargs)
+
+        monkeypatch.setattr(local_mod.asyncio, "create_subprocess_exec", recording_exec)
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="echo hello", name="login-test",
+            resources=ResourceSpec(work_dir=work_dir),
+            inherit_env=False, login_shell=True,
+        )
+        proc = executor._processes[job.job_id]
+        await proc.wait()
+
+        assert recorded[0][:2] == ("bash", "-l")
+        assert recorded[0][2].endswith(".sh")
+
     async def test_running_job(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
         job = await executor.submit(
