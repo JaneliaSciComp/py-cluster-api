@@ -129,6 +129,47 @@ class TestLocalSubmitAndPoll:
         await executor.cancel(job.job_id, done=True)
         assert job.status == JobStatus.DONE
 
+    async def test_job_id_is_pid(self, default_config, work_dir):
+        """The job_id is the subprocess PID (== its own process-group id)."""
+        import os
+
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            command="sleep 60", name="pid-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        pid = executor._processes[job.job_id].pid
+        assert job.job_id == str(pid)
+        # start_new_session=True makes the child its own group leader.
+        assert os.getpgid(pid) == pid
+        await executor.cancel(job.job_id)
+
+    async def test_stateless_cancel_kills_tree(self, default_config, work_dir):
+        """A fresh executor (no in-memory handle) cancels a job by PID and
+        reaps its whole process group — the launcher bash plus a backgrounded
+        child."""
+        import os
+        import pytest
+
+        executor = LocalExecutor(default_config)
+        job = await executor.submit(
+            # Launcher backgrounds one sleep and waits on another, so the
+            # group has more than just the bash leader.
+            command="sleep 300 & sleep 300", name="tree-test",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        await asyncio.sleep(0.2)
+        pgid = int(job.job_id)
+        assert os.getpgid(pgid) == pgid
+
+        # A brand-new executor has never seen this job — it must kill by PID.
+        fresh = LocalExecutor(default_config)
+        await fresh.cancel(job.job_id)
+
+        # cancel() only returns once the group is confirmed gone.
+        with pytest.raises(ProcessLookupError):
+            os.killpg(pgid, 0)
+
     async def test_multiple_jobs(self, default_config, work_dir):
         executor = LocalExecutor(default_config)
         job1 = await executor.submit(

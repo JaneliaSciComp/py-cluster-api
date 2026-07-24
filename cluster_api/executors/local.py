@@ -6,6 +6,8 @@ import asyncio
 import itertools
 import logging
 import os
+import signal
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -13,6 +15,7 @@ from typing import Any
 from .._types import ArrayElement, JobStatus, ResourceSpec
 from ..config import ClusterConfig
 from ..core import Executor, _ARRAY_ELEMENT_RE
+from ..exceptions import ClusterAPIError
 from ..script import render_script, write_script
 
 logger = logging.getLogger(__name__)
@@ -68,13 +71,18 @@ class LocalExecutor(Executor):
         inherit_env: bool = True,
         login_shell: bool = False,
     ) -> tuple[str, str | None]:
-        """Render script, write to disk, run as a background subprocess."""
+        """Render script, write to disk, run as a background subprocess.
+
+        The job_id is the subprocess PID, which doubles as its process-group
+        id (the child is spawned with ``start_new_session=True``). This makes
+        the id a durable OS handle: a fresh executor in a later process can
+        cancel the job's whole tree by PID alone, without the in-memory
+        ``_processes`` entry (see :meth:`cancel`).
+        """
         header = self.build_header(name, resources)
         script = render_script(self.config, command, header, prologue, epilogue)
-        script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
-
-        job_id = str(self._next_id)
-        self._next_id += 1
+        token = next(self._script_counter)
+        script_path = write_script(resources.work_dir, script, name, token)
 
         if inherit_env:
             full_env = {**os.environ, **(env or {})}
@@ -82,8 +90,10 @@ class LocalExecutor(Executor):
             full_env = _baseline_env(env)
         bash_cmd = ["bash", "-l", script_path] if login_shell else ["bash", script_path]
 
-        # Write stdout/stderr directly to log files for real-time access
-        stdout_dest, stderr_dest = self._open_output_files(resources, job_id=job_id)
+        # Open logs before spawn (they become the child's stdout/stderr). The
+        # PID isn't known yet, so key them by the script token, then re-key to
+        # the PID once we have it.
+        stdout_dest, stderr_dest = self._open_output_files(resources, job_id=str(token))
 
         proc = await asyncio.create_subprocess_exec(
             *bash_cmd,
@@ -91,8 +101,18 @@ class LocalExecutor(Executor):
             stderr=stderr_dest,
             env=full_env,
             cwd=cwd,
+            start_new_session=True,
         )
 
+        job_id = str(proc.pid)
+        self._open_fds[job_id] = self._open_fds.pop(str(token))
+        # Default log files were named by the pre-spawn token; re-point them at
+        # the PID so the documented stdout.{job_id}.log resolves. The open fds
+        # keep writing to the same inode across the rename.
+        if not resources.stdout_path:
+            base = Path(resources.work_dir)
+            for stream in ("stdout", "stderr"):
+                (base / f"{stream}.{token}.log").rename(base / f"{stream}.{job_id}.log")
         self._processes[job_id] = proc
         return job_id, script_path
 
@@ -122,7 +142,12 @@ class LocalExecutor(Executor):
         script = render_script(self.config, command, header, prologue, epilogue)
         script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
-        job_id = str(self._next_id)
+        # Array jobs spawn N processes, so no single PID identifies the job.
+        # Use a synthetic, deliberately non-numeric id: it can't be mistaken
+        # for a process-group id by the stateless cancel path (which would
+        # otherwise int() it), so an array is only ever cancelled in-process
+        # via its element handles.
+        job_id = f"array-{self._next_id}"
         self._next_id += 1
 
         if inherit_env:
@@ -226,8 +251,16 @@ class LocalExecutor(Executor):
         return {jid: r.status for jid, r in self._jobs.items()}
 
     async def cancel(self, job_id: str, *, done: bool = False) -> None:
-        """Terminate a local subprocess (or all element processes for an array job)."""
-        # Collect all live processes for this job (single + array elements)
+        """Terminate a local job and its whole process tree.
+
+        Fast path: if this executor submitted the job (its ``asyncio``
+        subprocess handle is still in ``_processes``), signal that handle
+        directly. Stateless path: otherwise ``job_id`` is treated as the
+        job's process-group id (== leader PID from submit) and the entire
+        group is killed by PID — so a fresh executor in a later process can
+        cancel a job it never submitted.
+        """
+        # Fast path: live in-memory handles for this job (single + array elements).
         live: list[tuple[str, asyncio.subprocess.Process]] = []
         proc = self._processes.get(job_id)
         if proc and proc.returncode is None:
@@ -237,10 +270,10 @@ class LocalExecutor(Executor):
             if key.startswith(prefix) and proc.returncode is None:
                 live.append((key, proc))
 
-        # Send SIGTERM to all, then wait concurrently
-        for _key, p in live:
-            p.terminate()
         if live:
+            # Send SIGTERM to all, then wait concurrently
+            for _key, p in live:
+                p.terminate()
             tasks = [asyncio.ensure_future(p.wait()) for _key, p in live]
             _, pending = await asyncio.wait(tasks, timeout=5.0)
             # SIGKILL any that didn't exit in time
@@ -250,9 +283,11 @@ class LocalExecutor(Executor):
             # Reap the killed processes
             if pending:
                 await asyncio.wait(pending, timeout=5.0)
-
-        for key, _p in live:
-            self._close_output_files(key)
+            for key, _p in live:
+                self._close_output_files(key)
+        elif job_id not in self._processes:
+            # Stateless path: no handle for this job — kill by process group.
+            await self._terminate_group(job_id)
 
         target_status = JobStatus.DONE if done else JobStatus.KILLED
         if job_id in self._jobs:
@@ -262,6 +297,59 @@ class LocalExecutor(Executor):
                 if elem.status not in {JobStatus.DONE, JobStatus.FAILED, JobStatus.KILLED}:
                     elem.status = target_status
         logger.info("Cancelled local job %s (done=%s)", job_id, done)
+
+    async def _terminate_group(
+        self, job_id: str, grace_seconds: float = 3.0
+    ) -> None:
+        """Kill a job's process group (SIGTERM, then SIGKILL) by PID.
+
+        ``job_id`` is the process-group id (the leader PID from submit, which
+        used ``start_new_session=True``). Killing the group reaches the launcher
+        bash *and* its workload — bash does not forward SIGTERM to its child, so
+        signalling the leader alone would orphan the real job.
+
+        Raises ClusterAPIError if anything in the group outlives SIGKILL.
+        """
+        try:
+            pgid = int(job_id)
+        except ValueError:
+            # Non-PID id (e.g. an array counter) — nothing to kill statelessly.
+            logger.warning("Cannot cancel local job %s: no live handle", job_id)
+            return
+
+        def present() -> bool:
+            # True while the group has any member — including zombies not yet
+            # reaped. After SIGKILL a dead process lingers as a zombie until its
+            # parent (init, once the submitter exited) reaps it, so we poll
+            # briefly rather than trusting the first check.
+            try:
+                os.killpg(pgid, 0)
+                return True
+            except ProcessLookupError:
+                return False
+            except PermissionError:
+                # Group exists but is owned by someone else — treat as alive.
+                return True
+
+        # ponytail: no PID-reuse guard — the group id could have been recycled
+        # onto an unrelated process. This matches the prior job.pid behavior;
+        # add a start-time check here if reuse ever bites in practice.
+        if not present():
+            return
+        os.killpg(pgid, signal.SIGTERM)
+        deadline = time.monotonic() + grace_seconds
+        while present() and time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+        if present():
+            os.killpg(pgid, signal.SIGKILL)
+            # SIGKILL is immediate, but reaping the resulting zombies isn't.
+            deadline = time.monotonic() + 2.0
+            while present() and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+        if present():
+            raise ClusterAPIError(
+                f"Local job {job_id} survived SIGKILL; may still be running"
+            )
 
     def _open_output_files(
         self,
