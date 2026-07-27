@@ -996,3 +996,40 @@ class TestDependencies:
         cmd = mock_call.call_args[0][0]
         assert cmd[cmd.index("-w") + 1] == "done(111)"
         assert "-ti" in cmd
+
+    async def test_poll_annotates_dependency_failure(self, lsf_config, work_dir):
+        """When -ti kills a dependent, poll marks why it died."""
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            side_effect=[
+                "Job <111> is submitted to queue <normal>.",
+                "Job <222> is submitted to queue <normal>.",
+            ],
+        ):
+            a = await executor.submit(
+                command="exit 1", name="job-a",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+            b = await executor.submit(
+                command="echo b", name="job-b",
+                resources=ResourceSpec(work_dir=work_dir),
+                depends_on=[a],
+            )
+        bjobs_json = json.dumps({
+            "RECORDS": [
+                {"JOBID": "111", "JOB_NAME": "test-job-a", "STAT": "EXIT",
+                 "EXIT_CODE": "1"},
+                {"JOBID": "222", "JOB_NAME": "test-job-b", "STAT": "EXIT",
+                 "EXIT_CODE": ""},
+            ]
+        })
+        with patch.object(
+            executor, "_call", new_callable=AsyncMock, return_value=bjobs_json,
+        ):
+            await executor.poll()
+        assert a.status == JobStatus.FAILED
+        assert b.status == JobStatus.FAILED
+        assert b.metadata["dependency_failed"] == ["111"]
+        assert "dependency_failed" not in a.metadata

@@ -361,6 +361,22 @@ class Executor(abc.ABC):
             record = self._jobs[parent_id]
             record.status = record.compute_array_status()
 
+        # Annotate dependency-driven failures so callbacks can distinguish
+        # "upstream broke" from "my job broke".
+        for record in self._jobs.values():
+            if (
+                record.depends_on
+                and record.status in (JobStatus.FAILED, JobStatus.KILLED)
+                and "dependency_failed" not in record.metadata
+            ):
+                culprits = [
+                    d for d in record.depends_on
+                    if (dep := self._jobs.get(d)) is not None
+                    and dep.status in (JobStatus.FAILED, JobStatus.KILLED)
+                ]
+                if culprits:
+                    record.metadata["dependency_failed"] = culprits
+
         return {jid: r.status for jid, r in self._jobs.items()}
 
     # --- Subprocess helper ---
