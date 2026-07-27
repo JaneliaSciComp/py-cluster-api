@@ -51,12 +51,21 @@ class LocalExecutor(Executor):
         self._open_fds: dict[str, tuple[int, int]] = {}
         self._next_id = 1
         self._script_counter = itertools.count(1)
+        self._waiting: dict[str, dict] = {}
 
     def build_header(
         self, name: str, resources: ResourceSpec | None = None
     ) -> list[str]:
         """Local executor doesn't need scheduler directives."""
         return [f"# LOCAL Job: {name}"]
+
+    @staticmethod
+    def _job_env(env: dict[str, str] | None, inherit_env: bool) -> dict[str, str]:
+        return {**os.environ, **(env or {})} if inherit_env else _baseline_env(env)
+
+    @staticmethod
+    def _bash_cmd(script_path: str, login_shell: bool) -> list[str]:
+        return ["bash", "-l", script_path] if login_shell else ["bash", script_path]
 
     async def _submit_job(
         self,
@@ -85,11 +94,22 @@ class LocalExecutor(Executor):
         token = next(self._script_counter)
         script_path = write_script(resources.work_dir, script, name, token)
 
-        if inherit_env:
-            full_env = {**os.environ, **(env or {})}
-        else:
-            full_env = _baseline_env(env)
-        bash_cmd = ["bash", "-l", script_path] if login_shell else ["bash", script_path]
+        if depends_on:
+            job_id = f"waiting-{self._next_id}"
+            self._next_id += 1
+            self._waiting[job_id] = {
+                "script_path": script_path,
+                "resources": resources,
+                "env": env,
+                "cwd": cwd,
+                "inherit_env": inherit_env,
+                "login_shell": login_shell,
+                "array_range": None,
+            }
+            return job_id, script_path
+
+        full_env = self._job_env(env, inherit_env)
+        bash_cmd = self._bash_cmd(script_path, login_shell)
 
         # Open logs before spawn (they become the child's stdout/stderr). The
         # PID isn't known yet, so key them by the script token, then re-key to
@@ -144,6 +164,20 @@ class LocalExecutor(Executor):
         script = render_script(self.config, command, header, prologue, epilogue)
         script_path = write_script(resources.work_dir, script, name, next(self._script_counter))
 
+        if depends_on:
+            job_id = f"waiting-{self._next_id}"
+            self._next_id += 1
+            self._waiting[job_id] = {
+                "script_path": script_path,
+                "resources": resources,
+                "env": env,
+                "cwd": cwd,
+                "inherit_env": inherit_env,
+                "login_shell": login_shell,
+                "array_range": array_range,
+            }
+            return job_id, script_path
+
         # Array jobs spawn N processes, so no single PID identifies the job.
         # Use a synthetic, deliberately non-numeric id: it can't be mistaken
         # for a process-group id by the stateless cancel path (which would
@@ -152,11 +186,8 @@ class LocalExecutor(Executor):
         job_id = f"array-{self._next_id}"
         self._next_id += 1
 
-        if inherit_env:
-            full_env = {**os.environ, **(env or {})}
-        else:
-            full_env = _baseline_env(env)
-        bash_cmd = ["bash", "-l", script_path] if login_shell else ["bash", script_path]
+        full_env = self._job_env(env, inherit_env)
+        bash_cmd = self._bash_cmd(script_path, login_shell)
 
         for index in range(array_range[0], array_range[1] + 1):
             element_env = {**full_env, "ARRAY_INDEX": str(index)}
@@ -173,6 +204,44 @@ class LocalExecutor(Executor):
             self._processes[f"{job_id}[{index}]"] = proc
 
         return job_id, script_path
+
+    async def _spawn_deferred(self, job_id: str, entry: dict) -> None:
+        """Spawn a parked job whose dependencies are now satisfied.
+
+        The job keeps its synthetic ``waiting-N`` id (ids never change once
+        returned), so the PID-based stateless cancel path does not apply —
+        same trade-off as local array jobs.
+        """
+        resources = entry["resources"]
+        full_env = self._job_env(entry["env"], entry["inherit_env"])
+        bash_cmd = self._bash_cmd(entry["script_path"], entry["login_shell"])
+
+        if entry["array_range"] is None:
+            stdout_dest, stderr_dest = self._open_output_files(resources, job_id=job_id)
+            proc = await asyncio.create_subprocess_exec(
+                *bash_cmd,
+                stdout=stdout_dest,
+                stderr=stderr_dest,
+                env=full_env,
+                cwd=entry["cwd"],
+                start_new_session=True,
+            )
+            self._processes[job_id] = proc
+        else:
+            start, end = entry["array_range"]
+            for index in range(start, end + 1):
+                element_env = {**full_env, "ARRAY_INDEX": str(index)}
+                stdout_dest, stderr_dest = self._open_output_files(
+                    resources, job_id=job_id, element_index=index,
+                )
+                proc = await asyncio.create_subprocess_exec(
+                    *bash_cmd,
+                    stdout=stdout_dest,
+                    stderr=stderr_dest,
+                    env=element_env,
+                    cwd=entry["cwd"],
+                )
+                self._processes[f"{job_id}[{index}]"] = proc
 
     def _build_status_args(self) -> list[str]:
         # Not used for local executor; poll() is overridden
@@ -250,6 +319,31 @@ class LocalExecutor(Executor):
             if record.is_terminal:
                 record.finish_time = datetime.now(timezone.utc)
 
+        # --- Waiting (dependency-deferred) jobs ---
+        for job_id in list(self._waiting):
+            record = self._jobs.get(job_id)
+            if record is None or record.is_terminal:
+                self._waiting.pop(job_id)
+                continue
+            dep_records = [self._jobs.get(d) for d in record.depends_on]
+            failed = [
+                d for d, r in zip(record.depends_on, dep_records)
+                if r is None or r.status in {JobStatus.FAILED, JobStatus.KILLED}
+            ]
+            now = datetime.now(timezone.utc)
+            if failed:
+                # An untracked dep (None) can never be satisfied — treat as failed.
+                self._waiting.pop(job_id)
+                record.status = JobStatus.KILLED
+                record.metadata["dependency_failed"] = failed
+                record.finish_time = now
+            elif all(r.status == JobStatus.DONE for r in dep_records):
+                entry = self._waiting.pop(job_id)
+                await self._spawn_deferred(job_id, entry)
+                record._last_seen = now
+            else:
+                record._last_seen = now  # keep zombie detection at bay while parked
+
         return {jid: r.status for jid, r in self._jobs.items()}
 
     async def cancel(self, job_id: str, *, done: bool = False) -> None:
@@ -262,6 +356,10 @@ class LocalExecutor(Executor):
         group is killed by PID — so a fresh executor in a later process can
         cancel a job it never submitted.
         """
+        # A parked (dependency-deferred) job has no process yet; discard its
+        # entry so a later poll can't spawn it after cancellation.
+        deferred = self._waiting.pop(job_id, None)
+
         # Fast path: live in-memory handles for this job (single + array elements).
         live: list[tuple[str, asyncio.subprocess.Process]] = []
         proc = self._processes.get(job_id)
@@ -287,7 +385,7 @@ class LocalExecutor(Executor):
                 await asyncio.wait(pending, timeout=5.0)
             for key, _p in live:
                 self._close_output_files(key)
-        elif job_id not in self._processes:
+        elif deferred is None and job_id not in self._processes:
             # Stateless path: no handle for this job — kill by process group.
             await self._terminate_group(job_id)
 
