@@ -84,6 +84,24 @@ async def run_array():
 
 The array index environment variable depends on the executor: LSF uses `$LSB_JOBINDEX`, while the local executor uses `$ARRAY_INDEX`.
 
+### Job Dependencies
+
+Chain jobs so each stage starts only after the previous one succeeds:
+
+```python
+convert = await executor.submit("convert.sh input.tif", name="convert-s0")
+pyramid = await executor.submit(
+    "build_pyramid.sh", name="pyramid",
+    depends_on=[convert],   # JobRecords or raw job-id strings
+)
+```
+
+`depends_on` accepts multiple jobs (fan-in). On LSF this uses native
+`bsub -w "done(...)" -ti`, so chains keep running if your process exits,
+and LSF terminates dependents whose upstream failed — no jobs stuck
+pending forever. When a dependent is cancelled this way,
+`record.metadata["dependency_failed"]` lists the failed upstream job ids.
+
 ### Reconnecting After Restart
 
 If your process crashes or restarts, `reconnect()` rediscovers running jobs from the scheduler and resumes tracking them. Requires `job_name_prefix` to be set in config.

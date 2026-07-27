@@ -309,3 +309,50 @@ class TestLSFNoMemory:
             assert job.exit_code == 0
         finally:
             await monitor.stop()
+
+
+class TestLSFDependencies:
+    """Dependency chains (-w done(...) -ti) on a real cluster."""
+
+    async def test_chain_success(self, lsf_executor, monitor, work_dir):
+        """B waits for A, then runs and sees A's output file."""
+        await monitor.start()
+        try:
+            marker = Path(work_dir) / "chain_marker.txt"
+            marker.unlink(missing_ok=True)
+            a = await lsf_executor.submit(
+                command=f"sleep 5 && echo ok > {marker}", name="chain-a",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+            b = await lsf_executor.submit(
+                command=f"cat {marker}", name="chain-b",
+                resources=ResourceSpec(work_dir=work_dir),
+                depends_on=[a],
+            )
+            await monitor.wait_for(a, b, timeout=300)
+            assert a.status == JobStatus.DONE
+            assert b.status == JobStatus.DONE
+        finally:
+            await monitor.stop()
+
+    async def test_chain_failure_terminates_dependent(
+        self, lsf_executor, monitor, work_dir
+    ):
+        """-ti: when A fails, LSF terminates B instead of pending forever."""
+        await monitor.start()
+        try:
+            a = await lsf_executor.submit(
+                command="sleep 2 && exit 1", name="failchain-a",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+            b = await lsf_executor.submit(
+                command="echo never", name="failchain-b",
+                resources=ResourceSpec(work_dir=work_dir),
+                depends_on=[a],
+            )
+            await monitor.wait_for(a, b, timeout=300)
+            assert a.status == JobStatus.FAILED
+            assert b.status in {JobStatus.FAILED, JobStatus.KILLED}
+            assert b.metadata.get("dependency_failed") == [a.job_id]
+        finally:
+            await monitor.stop()
