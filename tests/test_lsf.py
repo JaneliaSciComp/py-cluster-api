@@ -925,3 +925,74 @@ class TestDependencies:
             )
         assert a.depends_on == []
         assert b.depends_on == ["111", "999"]
+
+    async def test_single_dependency_args(self, lsf_config, work_dir):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            side_effect=[
+                "Job <111> is submitted to queue <normal>.",
+                "Job <222> is submitted to queue <normal>.",
+            ],
+        ) as mock_call:
+            a = await executor.submit(
+                command="echo a", name="job-a",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+            await executor.submit(
+                command="echo b", name="job-b",
+                resources=ResourceSpec(work_dir=work_dir),
+                depends_on=[a],
+            )
+        cmd = mock_call.call_args[0][0]
+        assert cmd[cmd.index("-w") + 1] == "done(111)"
+        assert "-ti" in cmd
+
+    async def test_fan_in_dependency_expression(self, lsf_config, work_dir):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <333> is submitted to queue <normal>.",
+        ) as mock_call:
+            await executor.submit(
+                command="echo c", name="job-c",
+                resources=ResourceSpec(work_dir=work_dir),
+                depends_on=["111", "222"],
+            )
+        cmd = mock_call.call_args[0][0]
+        assert cmd[cmd.index("-w") + 1] == "done(111) && done(222)"
+        assert "-ti" in cmd
+
+    async def test_no_dependency_args_by_default(self, lsf_config, work_dir):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <111> is submitted to queue <normal>.",
+        ) as mock_call:
+            await executor.submit(
+                command="echo a", name="job-a",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+        cmd = mock_call.call_args[0][0]
+        assert "-w" not in cmd
+        assert "-ti" not in cmd
+
+    async def test_array_with_dependency(self, lsf_config, work_dir):
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <444> is submitted to queue <normal>.",
+        ) as mock_call:
+            await executor.submit_array(
+                command="echo x", name="arr",
+                array_range=(1, 5),
+                resources=ResourceSpec(work_dir=work_dir),
+                depends_on=["111"],
+            )
+        cmd = mock_call.call_args[0][0]
+        assert cmd[cmd.index("-w") + 1] == "done(111)"
+        assert "-ti" in cmd
