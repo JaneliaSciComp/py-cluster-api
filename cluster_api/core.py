@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import re
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 
@@ -73,6 +74,15 @@ class Executor(abc.ABC):
 
     # --- Submission ---
 
+    @staticmethod
+    def _resolve_dependency_ids(
+        depends_on: Sequence[JobRecord | str] | None,
+    ) -> list[str]:
+        """Resolve JobRecords or raw id strings to a list of job ids."""
+        if not depends_on:
+            return []
+        return [d.job_id if isinstance(d, JobRecord) else str(d) for d in depends_on]
+
     async def submit(
         self,
         command: str,
@@ -84,6 +94,7 @@ class Executor(abc.ABC):
         metadata: dict[str, Any] | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: Sequence[JobRecord | str] | None = None,
     ) -> JobRecord:
         """Submit a job to the scheduler.
 
@@ -95,14 +106,20 @@ class Executor(abc.ABC):
             login_shell: When True, the job runs under a login shell so the
                 target user's own profile builds the environment (PATH,
                 modules, conda), as if they had SSH'd to the node.
+            depends_on: Jobs that must finish successfully before this job
+                starts. Accepts JobRecords or raw job-id strings. If any
+                dependency fails or is killed, this job is cancelled instead
+                of pending forever.
         """
         resources = resources or ResourceSpec()
         full_name = _sanitize_job_name(f"{self._prefix}-{name}" if self._prefix else name)
+        dep_ids = self._resolve_dependency_ids(depends_on)
 
         job_id, script_path = await self._submit_job(
             command, full_name, resources, prologue, epilogue, env,
             cwd=resources.work_dir,
             inherit_env=inherit_env, login_shell=login_shell,
+            depends_on=dep_ids or None,
         )
 
         record = JobRecord(
@@ -113,6 +130,7 @@ class Executor(abc.ABC):
             resources=resources,
             script_path=script_path,
             metadata=metadata or {},
+            depends_on=dep_ids,
             _last_seen=datetime.now(timezone.utc),
         )
         self._jobs[job_id] = record
@@ -132,15 +150,18 @@ class Executor(abc.ABC):
         max_concurrent: int | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: Sequence[JobRecord | str] | None = None,
     ) -> JobRecord:
         """Submit a job array to the scheduler."""
         resources = resources or ResourceSpec()
         full_name = _sanitize_job_name(f"{self._prefix}-{name}" if self._prefix else name)
+        dep_ids = self._resolve_dependency_ids(depends_on)
 
         job_id, script_path = await self._submit_array_job(
             command, full_name, array_range, resources, prologue, epilogue,
             env, max_concurrent, cwd=resources.work_dir,
             inherit_env=inherit_env, login_shell=login_shell,
+            depends_on=dep_ids or None,
         )
 
         meta = {**(metadata or {}), "array_range": array_range}
@@ -155,6 +176,7 @@ class Executor(abc.ABC):
             resources=resources,
             script_path=script_path,
             metadata=meta,
+            depends_on=dep_ids,
             _last_seen=datetime.now(timezone.utc),
         )
         self._jobs[job_id] = record
@@ -177,6 +199,7 @@ class Executor(abc.ABC):
         cwd: str | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: list[str] | None = None,
     ) -> tuple[str, str | None]:
         """Submit a single job.
 
@@ -199,11 +222,13 @@ class Executor(abc.ABC):
         cwd: str | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: list[str] | None = None,
     ) -> tuple[str, str | None]:
         """Submit an array job. Override in subclasses."""
         return await self._submit_job(
             command, name, resources, prologue, epilogue, env, cwd=cwd,
             inherit_env=inherit_env, login_shell=login_shell,
+            depends_on=depends_on,
         )
 
     def _job_id_from_submit_output(self, out: str) -> str:

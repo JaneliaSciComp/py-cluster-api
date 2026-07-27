@@ -899,3 +899,29 @@ class TestPollPartialBjobsFailure:
         # Should skip gracefully, job unchanged
         assert job.status == JobStatus.PENDING
         assert statuses["100"] == JobStatus.PENDING
+
+
+class TestDependencies:
+
+    async def test_depends_on_resolved_to_ids(self, lsf_config, work_dir):
+        """depends_on accepts JobRecords and raw id strings; record stores ids."""
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            side_effect=[
+                "Job <111> is submitted to queue <normal>.",
+                "Job <222> is submitted to queue <normal>.",
+            ],
+        ):
+            a = await executor.submit(
+                command="echo a", name="job-a",
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+            b = await executor.submit(
+                command="echo b", name="job-b",
+                resources=ResourceSpec(work_dir=work_dir),
+                depends_on=[a, "999"],
+            )
+        assert a.depends_on == []
+        assert b.depends_on == ["111", "999"]

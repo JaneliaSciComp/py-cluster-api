@@ -70,6 +70,7 @@ class LocalExecutor(Executor):
         cwd: str | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: list[str] | None = None,
     ) -> tuple[str, str | None]:
         """Render script, write to disk, run as a background subprocess.
 
@@ -130,6 +131,7 @@ class LocalExecutor(Executor):
         cwd: str | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: list[str] | None = None,
     ) -> tuple[str, str | None]:
         """Spawn one subprocess per array element with ARRAY_INDEX env var."""
         if max_concurrent is not None:

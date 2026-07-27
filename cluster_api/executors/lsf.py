@@ -188,6 +188,7 @@ class LSFExecutor(Executor):
         cwd: str | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: list[str] | None = None,
     ) -> tuple[str, str | None]:
         """Render script, write to disk, submit via bsub."""
         header = self.build_header(name, resources)
@@ -214,6 +215,7 @@ class LSFExecutor(Executor):
         cwd: str | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: list[str] | None = None,
     ) -> tuple[str, str | None]:
         """Render script, rewrite for array syntax, submit via bsub."""
         header = self.build_header(name, resources)
