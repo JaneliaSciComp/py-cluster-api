@@ -150,6 +150,19 @@ class LSFExecutor(Executor):
         return args
 
     @staticmethod
+    def _dependency_args(depends_on: list[str] | None) -> list[str]:
+        """bsub args to start only after all *depends_on* jobs succeed.
+
+        ``-ti`` makes LSF terminate this job as soon as the dependency can
+        never be satisfied (a dependency failed or was killed), instead of
+        leaving it pending forever.
+        """
+        if not depends_on:
+            return []
+        expr = " && ".join(f"done({d})" for d in depends_on)
+        return ["-w", expr, "-ti"]
+
+    @staticmethod
     def _env_prologue(env: dict[str, str] | None, inherit_env: bool,
                       prologue: list[str] | None) -> list[str] | None:
         """Fold explicit env vars into the script when bsub won't copy them.
@@ -188,6 +201,7 @@ class LSFExecutor(Executor):
         cwd: str | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: list[str] | None = None,
     ) -> tuple[str, str | None]:
         """Render script, write to disk, submit via bsub."""
         header = self.build_header(name, resources)
@@ -197,6 +211,7 @@ class LSFExecutor(Executor):
 
         extra_args = self._collect_extra_args(resources)
         extra_args.extend(self._env_control_args(inherit_env, login_shell))
+        extra_args.extend(self._dependency_args(depends_on))
         out = await self._bsub(script_path, env, extra_args)
         return self._job_id_from_submit_output(out), script_path
 
@@ -214,6 +229,7 @@ class LSFExecutor(Executor):
         cwd: str | None = None,
         inherit_env: bool = True,
         login_shell: bool = False,
+        depends_on: list[str] | None = None,
     ) -> tuple[str, str | None]:
         """Render script, rewrite for array syntax, submit via bsub."""
         header = self.build_header(name, resources)
@@ -242,6 +258,7 @@ class LSFExecutor(Executor):
 
         extra_args = self._collect_extra_args(resources)
         extra_args.extend(self._env_control_args(inherit_env, login_shell))
+        extra_args.extend(self._dependency_args(depends_on))
         out = await self._bsub(script_path, env, extra_args)
         return self._job_id_from_submit_output(out), script_path
 

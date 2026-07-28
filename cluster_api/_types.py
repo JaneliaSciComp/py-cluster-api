@@ -98,6 +98,7 @@ class JobRecord:
     start_time: datetime | None = None
     finish_time: datetime | None = None
     array_elements: dict[int, ArrayElement] = field(default_factory=dict)
+    depends_on: list[str] = field(default_factory=list)
     _callbacks: list[tuple[JobExitCondition, Callable]] = field(
         default_factory=list, repr=False
     )

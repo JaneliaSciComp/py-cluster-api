@@ -439,3 +439,125 @@ class TestLocalArrayJobs:
         assert job.status == JobStatus.KILLED
         for elem in job.array_elements.values():
             assert elem.status == JobStatus.KILLED
+
+
+class TestLocalDependencies:
+
+    async def test_dependent_waits_then_runs(self, default_config, work_dir):
+        """B parks as PENDING, spawns after A succeeds, then completes."""
+        executor = LocalExecutor(default_config)
+        marker = Path(work_dir) / "a.txt"
+        a = await executor.submit(
+            command=f"echo done > {marker}", name="dep-a",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        b = await executor.submit(
+            command=f"cat {marker}", name="dep-b",
+            resources=ResourceSpec(work_dir=work_dir),
+            depends_on=[a],
+        )
+        assert b.job_id.startswith("waiting-")
+        assert b.status == JobStatus.PENDING
+        assert b.job_id not in executor._processes  # not spawned yet
+
+        await executor._processes[a.job_id].wait()
+        await executor.poll()  # sees A DONE -> spawns B in the same cycle
+        assert a.status == JobStatus.DONE
+        assert b.job_id in executor._processes
+
+        await executor._processes[b.job_id].wait()
+        await executor.poll()
+        assert b.status == JobStatus.DONE
+        assert b.exit_code == 0
+
+    async def test_dependent_killed_when_dep_fails(self, default_config, work_dir):
+        executor = LocalExecutor(default_config)
+        a = await executor.submit(
+            command="exit 1", name="fail-a",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        b = await executor.submit(
+            command="echo never", name="dep-b",
+            resources=ResourceSpec(work_dir=work_dir),
+            depends_on=[a],
+        )
+        await executor._processes[a.job_id].wait()
+        await executor.poll()
+        assert a.status == JobStatus.FAILED
+        assert b.status == JobStatus.KILLED
+        assert b.metadata["dependency_failed"] == [a.job_id]
+        assert b.job_id not in executor._processes  # never spawned
+
+    async def test_fan_in_waits_for_all(self, default_config, work_dir):
+        executor = LocalExecutor(default_config)
+        a = await executor.submit(
+            command="true", name="fan-a",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        b = await executor.submit(
+            command="sleep 0.4", name="fan-b",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        c = await executor.submit(
+            command="echo c", name="fan-c",
+            resources=ResourceSpec(work_dir=work_dir),
+            depends_on=[a, b],
+        )
+        await executor._processes[a.job_id].wait()
+        await executor.poll()
+        # A done, B still running -> C still parked
+        assert c.job_id not in executor._processes
+        assert c.status == JobStatus.PENDING
+
+        await executor._processes[b.job_id].wait()
+        await executor.poll()
+        assert c.job_id in executor._processes
+        await executor._processes[c.job_id].wait()
+        await executor.poll()
+        assert c.status == JobStatus.DONE
+
+    async def test_dependent_array_job(self, default_config, work_dir):
+        """An array job with depends_on defers all element spawns."""
+        executor = LocalExecutor(default_config)
+        a = await executor.submit(
+            command="true", name="arr-dep",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        arr = await executor.submit_array(
+            command='echo "element $ARRAY_INDEX"', name="arr",
+            array_range=(1, 3),
+            resources=ResourceSpec(work_dir=work_dir),
+            depends_on=[a],
+        )
+        assert arr.job_id.startswith("waiting-")
+        assert not any(
+            k.startswith(f"{arr.job_id}[") for k in executor._processes
+        )
+        await executor._processes[a.job_id].wait()
+        await executor.poll()  # spawns the elements
+        keys = [k for k in executor._processes if k.startswith(f"{arr.job_id}[")]
+        assert len(keys) == 3
+        for k in keys:
+            await executor._processes[k].wait()
+        await executor.poll()
+        assert arr.status == JobStatus.DONE
+
+    async def test_cancel_waiting_job(self, default_config, work_dir):
+        """Cancelling a parked job removes it without spawning; dep unaffected."""
+        executor = LocalExecutor(default_config)
+        a = await executor.submit(
+            command="sleep 5", name="slow-a",
+            resources=ResourceSpec(work_dir=work_dir),
+        )
+        b = await executor.submit(
+            command="echo never", name="dep-b",
+            resources=ResourceSpec(work_dir=work_dir),
+            depends_on=[a],
+        )
+        await executor.cancel(b.job_id)
+        assert b.status == JobStatus.KILLED
+        assert b.job_id not in executor._waiting
+        await executor.poll()
+        assert b.job_id not in executor._processes
+        assert a.status in {JobStatus.PENDING, JobStatus.RUNNING}
+        await executor.cancel(a.job_id)
