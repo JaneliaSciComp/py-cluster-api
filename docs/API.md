@@ -8,18 +8,23 @@ Factory function that loads config and returns an `Executor` instance.
 
 Abstract base class. Key methods:
 
-- `submit(command, name, resources=None, prologue=None, epilogue=None, env=None, metadata=None)` — submit a job, returns `JobRecord`
+- `submit(command, name, resources=None, prologue=None, epilogue=None, env=None, metadata=None, inherit_env=True, login_shell=False, depends_on=None)` — submit a job, returns `JobRecord`
+  - `inherit_env`: when `True` (default), the job inherits the submitting process's environment; when `False`, only `env` plus scheduler-provided variables reach the job
+  - `login_shell`: when `True`, the job runs under a login shell so the target user's own profile builds the environment (PATH, modules, conda)
+  - `depends_on`: `JobRecord`s or raw job-id strings that must finish successfully before this job starts (fan-in supported); a failed/killed dependency cancels this job instead of leaving it pending forever
 - `submit_array(command, name, array_range, ...)` — submit a job array
-- `cancel(job_id, *, done=False)` — cancel a job by ID. By default marks the job as `KILLED`; pass `done=True` to mark it as `DONE` instead (useful for graceful pipeline termination where you don't want downstream logic to treat the cancellation as a failure)
+- `cancel(job_id, *, done=False)` — cancel a job by ID. By default marks the job as `KILLED`; pass `done=True` to mark it as `DONE` instead (useful for graceful pipeline termination where you don't want downstream logic to treat the cancellation as a failure). The local executor raises `ClusterAPIError` if the job's process group survives `SIGKILL`
 - `cancel_by_name(name_pattern)` — cancel jobs matching a name pattern (LSF only)
 - `cancel_all(*, done=False)` — cancel all tracked non-terminal jobs
 - `reconnect()` — rediscover running jobs after a process restart (requires `job_name_prefix`)
+- `track(job_id, status=JobStatus.PENDING)` — begin tracking a job by ID without re-submitting it, e.g. to seed the executor from a persistent store; the next `poll()` fills in the rest from the scheduler
+- `remove_job(job_id)` — stop tracking a job
 - `poll()` — query scheduler and update job statuses
 - `jobs` / `active_jobs` — properties returning tracked job dicts
 
 ## `JobRecord`
 
-Tracks a submitted job. Fields include `job_id`, `name`, `status`, `exit_code`, `exec_host`, `max_mem`, `submit_time`, `start_time`, `finish_time`, and `metadata`.
+Tracks a submitted job. Fields include `job_id`, `name`, `status`, `exit_code`, `exec_host`, `max_mem`, `submit_time`, `start_time`, `finish_time`, `depends_on`, and `metadata`. If a dependency fails, `metadata["dependency_failed"]` lists the failed upstream job ids.
 
 - `on_success(callback)` — register callback for exit code 0
 - `on_failure(callback)` — register callback for non-zero exit
