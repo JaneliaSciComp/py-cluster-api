@@ -19,6 +19,9 @@ A Python library for submitting and monitoring jobs on HPC clusters. Supports ru
 - **Zombie detection** — jobs that disappear from the scheduler are marked as failed
 - **YAML config with profiles** — Nextflow-style config with per-environment profiles
 - **Callback chaining** — register `on_success`, `on_failure`, or `on_exit` handlers on any job
+- **Job dependencies** — chain jobs with `depends_on`; dependents are auto-cancelled if an upstream job fails
+- **Environment control** — `inherit_env` and `login_shell` submit options control what environment a job runs with
+- **Reconnect & external tracking** — `reconnect()` rediscovers jobs after a restart; `track()` seeds a job from an external store (e.g. a database) into the executor
 
 ## Installation
 
@@ -120,6 +123,28 @@ async def resume():
     if recovered:
         await monitor.wait_for(*recovered)
     await monitor.stop()
+```
+
+### Environment Control
+
+By default a submitted job inherits the submitting process's environment plus whatever `env` you pass. Set `inherit_env=False` to start from a minimal environment (only `env` and scheduler-provided variables), or `login_shell=True` to run under a login shell so the target user's own profile builds `PATH`, modules, conda, etc.:
+
+```python
+job = await executor.submit(
+    command="my_tool.sh",
+    name="my-job",
+    inherit_env=False,
+    login_shell=True,
+    env={"MY_VAR": "1"},
+)
+```
+
+### Tracking Jobs From External State
+
+`track()` seeds the executor with a job ID from a persistent store (e.g. a database) without re-submitting it, so a later `poll()` or `cancel()` can act on jobs submitted by a previous process:
+
+```python
+job = executor.track(job_id="12345", status=JobStatus.RUNNING)
 ```
 
 ### Local Testing
