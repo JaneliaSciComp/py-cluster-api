@@ -73,7 +73,6 @@ ruff = "*"
 
 [tool.pixi.feature.release.dependencies]
 python-build = "*"
-twine = "*"
 
 [tool.pixi.feature.release.tasks]
 pypi-build = "python -m build"
@@ -82,3 +81,6 @@ pypi-upload = "twine upload dist/*"
 [tool.pixi.environments]
 default = { features = ["test", "dev"], solve-group = "default" }
 release = { features = ["release"], solve-group = "default" }
+
+[dependency-groups]
+release = ["twine>=7"]
