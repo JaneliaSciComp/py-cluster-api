@@ -36,7 +36,7 @@ _LSF_STATUS_MAP: dict[str, JobStatus] = {
 }
 
 _BJOBS_FIELDS = (
-    "jobid job_name stat exit_code exec_host max_mem "
+    "jobid jobindex job_name stat exit_code exec_host max_mem "
     "submit_time start_time finish_time"
 )
 
@@ -305,6 +305,12 @@ class LSFExecutor(Executor):
             job_id = str(rec.get("JOBID", "")).strip()
             if not job_id:
                 continue
+            # bjobs reports the bare parent ID for every array element; the
+            # index lives in JOBINDEX ("0" for non-array jobs). Re-key as
+            # "parent[idx]" so poll()/reconnect() can tell elements apart.
+            job_index = str(rec.get("JOBINDEX", "")).strip()
+            if job_index and job_index != "0" and "[" not in job_id:
+                job_id = f"{job_id}[{job_index}]"
 
             stat = rec.get("STAT", "").strip()
             status = _LSF_STATUS_MAP.get(stat)
