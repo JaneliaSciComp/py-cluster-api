@@ -33,7 +33,7 @@ Homepage = "https://github.com/JaneliaSciComp/py-cluster-api"
 Repository = "https://github.com/JaneliaSciComp/py-cluster-api"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
@@ -73,12 +73,15 @@ ruff = "*"
 
 [tool.pixi.feature.release.dependencies]
 python-build = "*"
-twine = "*"
+hatchling = ">=1.32.4,<2"
 
 [tool.pixi.feature.release.tasks]
-pypi-build = "python -m build"
+pypi-build = "rm -rf dist && python -m build --no-isolation"
 pypi-upload = "twine upload dist/*"
 
 [tool.pixi.environments]
 default = { features = ["test", "dev"], solve-group = "default" }
 release = { features = ["release"], solve-group = "default" }
+
+[dependency-groups]
+release = ["twine>=7"]
