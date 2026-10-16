@@ -627,6 +627,24 @@ class TestParseArrayElements:
         assert "12345[1]" in result
 
 
+    def test_real_lsf_format_uses_jobindex(self, lsf_config):
+        """Real bjobs -json reports the bare parent ID in JOBID and the
+        element index only in JOBINDEX (regression for issue #8)."""
+        executor = LSFExecutor(lsf_config)
+        output = self._make_bjobs_json([
+            {"JOBID": "154541712", "JOBINDEX": "2", "STAT": "RUN",
+             "JOB_NAME": "wells[2]", "EXIT_CODE": "-"},
+            {"JOBID": "154541712", "JOBINDEX": "1", "STAT": "DONE",
+             "JOB_NAME": "wells[1]", "EXIT_CODE": ""},
+            {"JOBID": "99", "JOBINDEX": "0", "STAT": "RUN",
+             "JOB_NAME": "single", "EXIT_CODE": "-"},
+        ])
+        result = executor._parse_job_statuses(output)
+        assert set(result) == {"154541712[1]", "154541712[2]", "99"}
+        assert result["154541712[1]"][0] == JobStatus.DONE
+        assert result["154541712[2]"][0] == JobStatus.RUNNING
+
+
 class TestArrayStatusComputation:
     def test_no_elements(self):
         record = JobRecord(
@@ -751,6 +769,40 @@ class TestArrayElementPolling:
         assert job.array_elements[3].status == JobStatus.PENDING
         assert job.status == JobStatus.RUNNING
         assert statuses["12345"] == JobStatus.RUNNING
+
+    async def test_poll_real_lsf_format_one_element_done(self, lsf_config, work_dir):
+        """Issue #8: bjobs lists DONE elements last and reports the bare parent
+        ID for every element; the parent must stay RUNNING until all are done."""
+        executor = LSFExecutor(lsf_config)
+        with patch.object(
+            executor, "_call",
+            new_callable=AsyncMock,
+            return_value="Job <154541712> is submitted to queue <normal>.",
+        ):
+            job = await executor.submit_array(
+                command="echo hello", name="wells", array_range=(1, 4),
+                resources=ResourceSpec(work_dir=work_dir),
+            )
+
+        def rec(idx, stat):
+            return {"JOBID": "154541712", "JOBINDEX": str(idx), "STAT": stat,
+                    "JOB_NAME": f"wells[{idx}]", "EXIT_CODE": "-",
+                    "EXEC_HOST": "-", "MAX_MEM": "-",
+                    "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"}
+
+        bjobs_output = json.dumps({"RECORDS": [
+            rec(2, "RUN"), rec(3, "RUN"), rec(4, "RUN"), rec(1, "DONE"),
+        ]})
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value=bjobs_output) as m:
+            await executor.poll()
+            args = m.call_args.args[0]
+            assert "jobindex" in args[args.index("-o") + 1]
+
+        assert job.status == JobStatus.RUNNING
+        assert not job.is_terminal
+        assert len(job.array_elements) == 4
+        assert job.array_elements[1].status == JobStatus.DONE
+        assert job.array_elements[4].status == JobStatus.RUNNING
 
     async def test_poll_all_done(self, lsf_config, work_dir):
         executor = LSFExecutor(lsf_config)
