@@ -129,11 +129,10 @@ class LSFExecutor(Executor):
         return submit_env or None
 
     def _collect_extra_args(self, resources: ResourceSpec | None = None) -> list[str]:
-        """Merge config-level and per-job extra CLI args."""
-        args = list(self.config.extra_args)
-        if resources and resources.extra_args:
-            args.extend(resources.extra_args)
-        return args
+        """Return per-job extra CLI args, falling back to config-level defaults."""
+        if resources and resources.extra_args is not None:
+            return list(resources.extra_args)
+        return list(self.config.extra_args)
 
     @staticmethod
     def _env_control_args(inherit_env: bool, login_shell: bool) -> list[str]:

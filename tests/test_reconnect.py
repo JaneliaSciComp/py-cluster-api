@@ -27,8 +27,15 @@ def _make_record(
     start_time="Jan  5 10:01:00 2024",
     finish_time="-",
 ):
+    # Real bjobs -json: elements carry the bare parent ID in JOBID, the
+    # index in JOBINDEX, and "name[idx]" in JOB_NAME.
+    job_index = "0"
+    if "[" in job_id:
+        job_id, job_index = job_id.rstrip("]").split("[")
+        job_name = f"{job_name}[{job_index}]"
     return {
         "JOBID": job_id,
+        "JOBINDEX": job_index,
         "JOB_NAME": job_name,
         "STAT": stat,
         "EXIT_CODE": exit_code,

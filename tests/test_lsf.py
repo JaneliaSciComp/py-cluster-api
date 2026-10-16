@@ -599,10 +599,10 @@ class TestParseArrayElements:
     def test_element_ids_as_keys(self, lsf_config):
         executor = LSFExecutor(lsf_config)
         output = self._make_bjobs_json([
-            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+            {"JOBID": "12345", "JOBINDEX": "1", "STAT": "DONE", "EXIT_CODE": "0",
              "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
-            {"JOBID": "12345[2]", "STAT": "RUN", "EXIT_CODE": "-",
+            {"JOBID": "12345", "JOBINDEX": "2", "STAT": "RUN", "EXIT_CODE": "-",
              "EXEC_HOST": "node02", "MAX_MEM": "-",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
         ])
@@ -618,7 +618,7 @@ class TestParseArrayElements:
             {"JOBID": "12345", "STAT": "RUN", "EXIT_CODE": "-",
              "EXEC_HOST": "-", "MAX_MEM": "-",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
-            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+            {"JOBID": "12345", "JOBINDEX": "1", "STAT": "DONE", "EXIT_CODE": "0",
              "EXEC_HOST": "node01", "MAX_MEM": "256 MB",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
         ])
@@ -748,13 +748,13 @@ class TestArrayElementPolling:
         assert len(job.array_elements) == 0
 
         bjobs_output = json.dumps({"RECORDS": [
-            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+            {"JOBID": "12345", "JOBINDEX": "1", "STAT": "DONE", "EXIT_CODE": "0",
              "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
-            {"JOBID": "12345[2]", "STAT": "RUN", "EXIT_CODE": "-",
+            {"JOBID": "12345", "JOBINDEX": "2", "STAT": "RUN", "EXIT_CODE": "-",
              "EXEC_HOST": "node02", "MAX_MEM": "-",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
-            {"JOBID": "12345[3]", "STAT": "PEND", "EXIT_CODE": "-",
+            {"JOBID": "12345", "JOBINDEX": "3", "STAT": "PEND", "EXIT_CODE": "-",
              "EXEC_HOST": "-", "MAX_MEM": "-",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
         ]})
@@ -819,10 +819,10 @@ class TestArrayElementPolling:
             )
 
         bjobs_output = json.dumps({"RECORDS": [
-            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+            {"JOBID": "12345", "JOBINDEX": "1", "STAT": "DONE", "EXIT_CODE": "0",
              "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
-            {"JOBID": "12345[2]", "STAT": "DONE", "EXIT_CODE": "0",
+            {"JOBID": "12345", "JOBINDEX": "2", "STAT": "DONE", "EXIT_CODE": "0",
              "EXEC_HOST": "node02", "MAX_MEM": "256 MB",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
         ]})
@@ -848,13 +848,13 @@ class TestArrayElementPolling:
             )
 
         bjobs_output = json.dumps({"RECORDS": [
-            {"JOBID": "12345[1]", "STAT": "DONE", "EXIT_CODE": "0",
+            {"JOBID": "12345", "JOBINDEX": "1", "STAT": "DONE", "EXIT_CODE": "0",
              "EXEC_HOST": "node01", "MAX_MEM": "128 MB",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
-            {"JOBID": "12345[2]", "STAT": "EXIT", "EXIT_CODE": "1",
+            {"JOBID": "12345", "JOBINDEX": "2", "STAT": "EXIT", "EXIT_CODE": "1",
              "EXEC_HOST": "node02", "MAX_MEM": "-",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
-            {"JOBID": "12345[3]", "STAT": "DONE", "EXIT_CODE": "0",
+            {"JOBID": "12345", "JOBINDEX": "3", "STAT": "DONE", "EXIT_CODE": "0",
              "EXEC_HOST": "node03", "MAX_MEM": "-",
              "SUBMIT_TIME": "-", "START_TIME": "-", "FINISH_TIME": "-"},
         ]})
