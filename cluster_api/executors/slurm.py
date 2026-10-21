@@ -11,10 +11,10 @@ import shlex
 from datetime import datetime, timezone
 from typing import Any
 
-from .._types import JobStatus, ResourceSpec
+from .._types import ArrayElement, JobRecord, JobStatus, ResourceSpec, _TERMINAL_STATUSES
 from ..config import ClusterConfig, parse_memory_bytes
-from ..core import Executor
-from ..exceptions import CommandFailedError, SubmitError
+from ..core import Executor, _ARRAY_ELEMENT_RE
+from ..exceptions import ClusterAPIError, CommandFailedError, SubmitError
 from ..script import render_script, write_script
 
 logger = logging.getLogger(__name__)
@@ -459,3 +459,101 @@ class SlurmExecutor(Executor):
             if not record.is_terminal and record.name == name_pattern:
                 record.status = JobStatus.KILLED
         logger.info("Cancelled jobs named %s", name_pattern)
+
+    # --- Reconnection ---
+
+    _RECORD_FIELDS = ("exec_host", "exit_code", "submit_time", "start_time", "finish_time")
+
+    def _build_discovery_args(self) -> list[str]:
+        """squeue query listing live jobs as ``parent_id|name`` lines.
+
+        squeue shows every pending and running job regardless of
+        eligibility (held, dependency-waiting), which ``sacct --state``
+        does not. ``-r`` gives one line per array element with ``%F`` the
+        parent ID; squeue lists all users by default, ``--me`` restricts it.
+        """
+        if not self._prefix:
+            raise ClusterAPIError(
+                "Cannot reconnect: no job_name_prefix was configured. "
+                "Set job_name_prefix in config to enable reconnection."
+            )
+        args = ["squeue", "-h", "-r", "-o", "%F|%j"]
+        if not self.config.poll_all_users:
+            args.append("--me")
+        return args
+
+    async def reconnect(self) -> list[JobRecord]:
+        """Rediscover live jobs by name prefix and resume tracking them.
+
+        Step 1 discovers IDs with squeue; step 2 fetches full rows for them
+        with the ordinary sacct query, which (being unfiltered by state)
+        also returns finished array elements so partially complete arrays
+        are rebuilt with their full extent.
+        """
+        args = self._build_discovery_args()
+        output = await self._call(args, timeout=self.config.command_timeout)
+
+        wanted = f"{self._prefix}-"
+        ids: list[str] = []
+        for line in output.splitlines():
+            if "|" not in line:
+                continue
+            job_id, name = line.split("|", 1)
+            job_id = job_id.strip()
+            if name.strip().startswith(wanted) and job_id not in ids and job_id not in self._jobs:
+                ids.append(job_id)
+        if not ids:
+            return []
+
+        rows = await self._call(self._sacct_args(ids), timeout=self.config.command_timeout)
+        statuses = self._parse_job_statuses(rows)
+
+        singles: dict[str, tuple[JobStatus, dict[str, Any]]] = {}
+        arrays: dict[str, list[tuple[int, JobStatus, dict[str, Any]]]] = {}
+        for raw_id, (status, meta) in statuses.items():
+            m = _ARRAY_ELEMENT_RE.match(raw_id)
+            if m:
+                arrays.setdefault(m.group(1), []).append((int(m.group(2)), status, meta))
+            else:
+                singles[raw_id] = (status, meta)
+
+        now = datetime.now(timezone.utc)
+        new_records: list[JobRecord] = []
+
+        for job_id, (status, meta) in singles.items():
+            if job_id in self._jobs or job_id in arrays or status in _TERMINAL_STATUSES:
+                continue
+            record = JobRecord(
+                job_id=job_id, name=meta.get("job_name") or "", command="",
+                status=status, metadata={"reconnected": True}, _last_seen=now,
+            )
+            for key in self._RECORD_FIELDS:
+                if meta.get(key) is not None:
+                    setattr(record, key, meta[key])
+            self._jobs[job_id] = record
+            new_records.append(record)
+
+        for parent_id, elements in arrays.items():
+            if parent_id in self._jobs:
+                continue
+            if all(s in _TERMINAL_STATUSES for _, s, _ in elements):
+                continue
+            indices = sorted(idx for idx, _, _ in elements)
+            record = JobRecord(
+                job_id=parent_id, name=elements[0][2].get("job_name") or "", command="",
+                status=JobStatus.PENDING,
+                metadata={"reconnected": True, "array_range": (indices[0], indices[-1])},
+                _last_seen=now,
+            )
+            for idx, elem_status, elem_meta in elements:
+                ae = ArrayElement(index=idx, status=elem_status)
+                for key in self._RECORD_FIELDS:
+                    if elem_meta.get(key) is not None:
+                        setattr(ae, key, elem_meta[key])
+                record.array_elements[idx] = ae
+            record.status = record.compute_array_status()
+            self._jobs[parent_id] = record
+            new_records.append(record)
+
+        logger.info("Reconnected to %d job(s)", len(new_records))
+        return new_records
