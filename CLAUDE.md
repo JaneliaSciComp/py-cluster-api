@@ -30,6 +30,7 @@ pixi run check        # lint + test
   - `monitor.py` — async polling loop + callback dispatch
   - `exceptions.py` — `ClusterAPIError`, `CommandTimeoutError`, `CommandFailedError`, `SubmitError`
   - `executors/lsf.py` — LSF executor (bsub/bjobs/bkill)
+  - `executors/slurm.py` — SLURM executor (sbatch/sacct/scancel; squeue for reconnect discovery)
   - `executors/local.py` — local subprocess executor (for testing), including array job simulation
 - `tests/` — pytest tests; all async tests use pytest-asyncio with `asyncio_mode = "auto"`
 
@@ -37,13 +38,14 @@ pixi run check        # lint + test
 
 Default log files include the job ID for uniqueness:
 - **LSF**: `stdout.%J.log` / `stderr.%J.log` (`%J` = job ID); array jobs use `stdout.%J.%I.log` (`%I` = array index)
+- **SLURM**: `stdout.%j.log` / `stderr.%j.log`; array jobs use `stdout.%A_%a.log` (`$SLURM_ARRAY_TASK_ID` per element)
 - **Local**: `stdout.{job_id}.log` / `stderr.{job_id}.log`; array jobs use `stdout.{job_id}.{index}.log` (`$ARRAY_INDEX` env var per element)
 
 Explicit `stdout_path` / `stderr_path` in `ResourceSpec` override these defaults.
 
 ## Testing
 
-All tests mock `Executor._call()` to avoid needing a real scheduler (except `test_local.py` which runs real subprocesses, and `test_integration.py` which requires a live LSF cluster and is skipped by default). Use `unittest.mock.patch` with `AsyncMock` for async method mocking.
+All tests mock `Executor._call()` to avoid needing a real scheduler (except `test_local.py` which runs real subprocesses, and `test_integration.py` / `test_slurm_integration.py` which require a live cluster and are skipped by default). Use `unittest.mock.patch` with `AsyncMock` for async method mocking.
 
 ## Style
 

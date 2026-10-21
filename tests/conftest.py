@@ -40,3 +40,17 @@ def lsf_config():
         suppress_job_email=True,
         lsf_units="MB",
     )
+
+
+@pytest.fixture
+def slurm_config():
+    """A SLURM ClusterConfig for testing."""
+    return ClusterConfig(
+        executor="slurm",
+        job_name_prefix="test",
+        queue="normal",
+        memory="8 GB",
+        walltime="04:00:00",
+        poll_interval=0.5,
+        command_timeout=10.0,
+    )
