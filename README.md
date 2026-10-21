@@ -8,7 +8,8 @@ A Python library for submitting and monitoring jobs on HPC clusters. Supports ru
 
 * Local Subprocess
 * IBM Platform LSF
-* We will accept PRs that implement and test additional executors (SLURM, etc.)
+* SLURM (requires slurmdbd accounting; see [SLURM notes](#slurm-notes))
+* We will accept PRs that implement and test additional executors (SGE, PBS, etc.)
 
 ## Features
 
@@ -85,7 +86,7 @@ async def run_array():
     await monitor.stop()
 ```
 
-The array index environment variable depends on the executor: LSF uses `$LSB_JOBINDEX`, while the local executor uses `$ARRAY_INDEX`.
+The array index environment variable depends on the executor: LSF uses `$LSB_JOBINDEX`, SLURM uses `$SLURM_ARRAY_TASK_ID`, and the local executor uses `$ARRAY_INDEX`.
 
 ### Job Dependencies
 
@@ -104,6 +105,7 @@ pyramid = await executor.submit(
 and LSF terminates dependents whose upstream failed — no jobs stuck
 pending forever. When a dependent is cancelled this way,
 `record.metadata["dependency_failed"]` lists the failed upstream job ids.
+On SLURM the same chain uses `sbatch --dependency=afterok:... --kill-on-invalid-dep=yes`.
 
 ### Reconnecting After Restart
 
@@ -188,6 +190,13 @@ profiles:
     script_prologue:
       - "module load java/11"
 
+  slurm_cluster:
+    executor: slurm
+    queue: compute          # SLURM partition
+    cpus: 2
+    memory: "8 GB"
+    walltime: "04:00:00"    # HH:MM:SS — "04:00" would mean four minutes on SLURM
+
   local_dev:
     executor: local
     poll_interval: 2
@@ -197,11 +206,11 @@ profiles:
 
 | Option | Default | Description |
 |---|---|---|
-| `executor` | `"local"` | Backend: `lsf` or `local` |
+| `executor` | `"local"` | Backend: `lsf`, `slurm` or `local` |
 | `cpus` | `None` | Default CPU count |
 | `gpus` | `None` | Default GPU count |
 | `memory` | `None` | Default memory (e.g. `"8 GB"`) |
-| `walltime` | `None` | Default wall time (e.g. `"04:00"`) |
+| `walltime` | `None` | Default wall time (LSF `"04:00"` = 4 h; SLURM `"04:00:00"` = 4 h) |
 | `queue` | `None` | Default queue/partition |
 | `poll_interval` | `10.0` | Seconds between status polls |
 | `job_name_prefix` | `None` | Optional prefix prepended to job names. When set, polling filters by `{prefix}-*` and `reconnect()` is available; when unset, the user controls the full job name and polling queries all jobs |
@@ -216,6 +225,28 @@ profiles:
 | `command_timeout` | `100.0` | Timeout in seconds for scheduler commands |
 | `zombie_timeout_minutes` | `30.0` | Mark jobs as failed if unseen for this long |
 | `completed_retention_minutes` | `10.0` | Keep finished jobs in memory for this long |
+
+### SLURM notes
+
+- **Accounting required.** Status comes from `sacct`, so the cluster must run
+  slurmdbd. History is kept subject to the site's `PurgeJobAfter` setting.
+- **No requeue.** Every job is submitted with `--no-requeue` so preempted or
+  node-failed jobs are reported as terminal. Sites that set
+  `PrologFlags=ForceRequeueOnFail` or `requeue_on_resume_failure` can still
+  requeue a job behind our back; the rerun is not tracked.
+- **Exit codes.** `exit_code` is the script's return code, or `-signal` when
+  a signal terminated the job (e.g. `-9`), as for the local executor.
+- **`max_mem`** is not reported (sacct only has it on step rows).
+- **`cancel_by_name`** matches an exact job name; `scancel` has no globbing.
+- **`inherit_env=False`** uses `--export=NONE`, which SLURM documents as
+  still loading the user's login environment on the node; `env` values are
+  exported inside the script and `SLURM_EXPORT_ENV=ALL` is set so `srun`
+  steps inside your command see them.
+- **`login_shell=True`** runs the script with `#!/bin/bash -l`; shebangs of
+  the form `#!/usr/bin/env bash` are left unchanged with a warning.
+- **GPUs** are requested with `--gres=gpu:N`; use `extra_directives` for
+  `--gpus-per-node`, `--mem-per-cpu`, `--account` and similar.
+- **Multi-cluster** (`-M`, `SLURM_CLUSTERS`) is unsupported.
 
 ## API Reference
 

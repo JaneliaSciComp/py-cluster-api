@@ -38,7 +38,10 @@ pixi run check         # lint + test together
 | `test_local.py` | `LocalExecutor` end-to-end (submit, poll, output files, callbacks, array jobs) | **Yes** — runs real bash subprocesses |
 | `test_monitor.py` | `JobMonitor` polling loop, callback dispatch, zombie detection, purging | No — mocks `poll()` |
 | `test_reconnect.py` | `LSFExecutor.reconnect()` — rediscovering running jobs after restart | No — mocks `_call()` |
+| `test_slurm.py` | `SlurmExecutor` header building, sbatch submission, sacct parsing, cancel | No — mocks `_call()` |
+| `test_slurm_reconnect.py` | `SlurmExecutor.reconnect()` — squeue discovery + sacct fetch | No — mocks `_call()` |
 | `test_integration.py` | Full LSF round-trips (submit, monitor, cancel, arrays, metadata) | **Yes** — requires a live LSF cluster |
+| `test_slurm_integration.py` | Full SLURM round-trips (submit, monitor, signals, arrays, dependencies, env, reconnect) | **Yes** — requires a live SLURM cluster with accounting; runs in CI |
 
 ### Writing tests
 
@@ -51,7 +54,7 @@ with patch.object(executor, "_call", new_callable=AsyncMock, return_value="Job <
     mock.assert_called_once()
 ```
 
-- Shared fixtures live in `tests/conftest.py`: `work_dir` (temp directory), `default_config` (local), and `lsf_config` (LSF with stdin mode).
+- Shared fixtures live in `tests/conftest.py`: `work_dir` (temp directory), `default_config` (local), `lsf_config` (LSF with stdin mode), and `slurm_config` (SLURM).
 - `test_local.py` runs real subprocesses — keep commands fast (`echo`, `pwd`, short `sleep`).
 
 ### Integration tests
@@ -67,6 +70,12 @@ Prerequisites:
 - Optionally create `tests/cluster_config.yaml` (gitignored) with cluster-specific settings like `queue`, `lsf_units`, etc.
 
 The tests cover: single job success/failure, multiple concurrent jobs, cancellation, job arrays, rich metadata population, and submission without memory limits.
+
+SLURM integration tests live in `test_slurm_integration.py` and skip unless
+`sbatch` is on `PATH`. In CI the `slurm-integration` job runs them on a real
+single-node SLURM (via `koesterlab/setup-slurm-action`) with
+`CLUSTER_API_REQUIRE_SLURM=1`, which turns that skip into a failure so the
+job cannot pass by skipping.
 
 ## Architecture
 
