@@ -461,6 +461,23 @@ class TestParseJobStatuses:
         assert result["200[1]"][1]["exit_code"] == 1
         assert result["200[4]"][0] == JobStatus.PENDING
 
+    @pytest.mark.parametrize("order", ["task_first", "range_first"])
+    def test_explicit_task_row_beats_compressed_range(self, slurm_config, order):
+        """Real sacct output: once task 2 starts it gets its own row, but the
+        array's pending meta-row can still list it as 17_[2-3]. The explicit
+        row must win regardless of which comes first."""
+        executor = SlurmExecutor(slurm_config)
+        rows = [
+            _row("17_2", state="RUNNING"),
+            _row("17_[2-3]", state="PENDING", nodelist="None assigned", start="Unknown"),
+        ]
+        if order == "range_first":
+            rows.reverse()
+        result = executor._parse_job_statuses("\n".join(rows))
+        assert result["17[2]"][0] == JobStatus.RUNNING
+        assert result["17[2]"][1]["exec_host"] == "node01"
+        assert result["17[3]"][0] == JobStatus.PENDING
+
     def test_step_rows_skipped(self, slurm_config):
         executor = SlurmExecutor(slurm_config)
         output = "\n".join([_row("123"), _row("123.batch"), _row("123.0")])

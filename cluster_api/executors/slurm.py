@@ -392,6 +392,10 @@ class SlurmExecutor(Executor):
     ) -> dict[str, tuple[JobStatus, dict[str, Any]]]:
         """Parse ``sacct -n -P -X`` rows into status + metadata dicts."""
         result: dict[str, tuple[JobStatus, dict[str, Any]]] = {}
+        # Expansions of compressed pending ranges ("17_[2-3]") are applied
+        # last and never override an explicit task row ("17_2"): sacct can
+        # list a task in the array's stale pending meta-row after it started.
+        from_ranges: dict[str, tuple[JobStatus, dict[str, Any]]] = {}
         for line in output.splitlines():
             if not line.strip():
                 continue
@@ -428,8 +432,11 @@ class SlurmExecutor(Executor):
                 "finish_time": _parse_slurm_time(end),
                 "job_name": _clean_field(job_name),
             }
+            target = from_ranges if "[" in job_id else result
             for key in _expand_job_id(job_id):
-                result[key] = (status, dict(meta))
+                target[key] = (status, dict(meta))
+        for key, value in from_ranges.items():
+            result.setdefault(key, value)
         return result
 
     # --- Cancellation ---
