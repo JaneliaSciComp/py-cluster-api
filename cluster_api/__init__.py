@@ -16,6 +16,7 @@ from .exceptions import (
 from .executors import get_executor_class
 from .executors.local import LocalExecutor
 from .executors.lsf import LSFExecutor
+from .executors.slurm import SlurmExecutor
 from .monitor import JobMonitor
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "ArrayElement",
     "Executor",
     "LSFExecutor",
+    "SlurmExecutor",
     "LocalExecutor",
     "JobRecord",
     "JobStatus",

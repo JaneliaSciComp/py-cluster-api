@@ -12,13 +12,15 @@ _REGISTRY: dict[str, type[Executor]] = {}
 
 def _ensure_builtins() -> None:
     """Lazily register built-in executors."""
-    if "lsf" in _REGISTRY and "local" in _REGISTRY:
+    if {"lsf", "local", "slurm"} <= _REGISTRY.keys():
         return
     from .lsf import LSFExecutor
     from .local import LocalExecutor
+    from .slurm import SlurmExecutor
 
     _REGISTRY.setdefault("lsf", LSFExecutor)
     _REGISTRY.setdefault("local", LocalExecutor)
+    _REGISTRY.setdefault("slurm", SlurmExecutor)
 
 
 def get_executor_class(name: str) -> type[Executor]:
