@@ -53,7 +53,7 @@ the findings of `2026-10-20-slurm-executor-review.md`.
 - Exported as `SlurmExecutor` from `cluster_api/__init__.py`.
 - No new `ClusterConfig` fields:
   - `queue` → `--partition`
-  - `poll_all_users` → `sacct --allusers`, `squeue -u all`
+  - `poll_all_users` → `sacct --allusers`; `squeue --me` when false
   - `job_name_prefix` → client-side filter in `reconnect()`
   - `extra_args` → appended to the `sbatch` command line
   - `lsf_units`, `suppress_job_email` → ignored (sbatch sends no mail by default)
@@ -154,18 +154,22 @@ man page).
 Command built by `_build_status_args()`:
 
 ```
-sacct -n -P -X --array [--allusers] -j id1,id2,... -o JobID,JobName,State,ExitCode,NodeList,Submit,Start,End
+sacct -n -P -X [--allusers] -j id1,id2,... -o JobID,JobName,State,ExitCode,NodeList,Submit,Start,End
 ```
 
 - `-n` no header, `-P` `|`-delimited without trailing `|`, `-X` allocation
-  rows only (no steps), `--array` one row per array task (sacct man page:
-  "Display all array tasks on separate lines instead of displaying groups of
-  array tasks on single lines"). This removes any need to parse compressed
-  expressions like `123_[0-5%4]`, which are also truncated at 64 bytes by
-  default (`SLURM_BITSTR_LEN`).
+  rows only (no steps).
+- Pending, not-yet-split array tasks come back compressed as
+  `123_[0-5,8%4]`. `sacct --array` would expand them but is absent from the
+  SLURM 22.05 man page, so it is not used. Instead every SLURM CLI call
+  runs with `SLURM_BITSTR_LEN=0` (documented in 22.05: "A value of 0 will
+  print the full expression with any length required"), which removes the
+  64-byte truncation, and the parser expands the expression completely:
+  comma lists, `a-b` ranges, optional `:step`, optional `%throttle`.
 - With `-j`, the time window defaults to epoch 0, so no `-S` is needed.
-- The subprocess environment sets `SLURM_TIME_FORMAT=standard` so a user's
-  shell setting cannot change the timestamp format (sacct man page).
+- Every SLURM CLI call also runs with `SLURM_TIME_FORMAT=standard` so a
+  user's shell setting cannot change the timestamp format (sacct man page).
+  Both variables are injected by a `_call` override on `SlurmExecutor`.
 - Only non-terminal tracked job IDs are queried. When nothing is tracked, the
   base `poll()` returns early.
 - Right after submission sacct may not know the job yet; it then returns no
@@ -175,9 +179,9 @@ sacct -n -P -X --array [--allusers] -j id1,id2,... -o JobID,JobName,State,ExitCo
 
 1. Split lines on `|`; skip rows whose JobID contains `.` (steps).
 2. JobID `123` → `"123"`; `123_4` → `"123[4]"` so the base `poll()` routes
-   it to the parent's `array_elements`. Any row whose JobID still contains
-   `[` (compressed form, which `--array` should prevent) is logged and
-   skipped rather than guessed at.
+   it to the parent's `array_elements`; `123_[0-5,8%4]` → one entry per
+   expanded index, all sharing the row's status. A JobID that matches none
+   of these forms is logged and skipped rather than guessed at.
 3. State: first whitespace token (`CANCELLED by 1234` → `CANCELLED`).
 4. ExitCode `rc:sig` → `exit_code = int(rc)` if `sig == 0`, else
    `-int(sig)`, matching the negative return codes the local executor gets
@@ -223,16 +227,17 @@ Two steps, reusing the sacct parser for everything that becomes a record:
    configuring):
 
    ```
-   squeue -h -r -o '%F|%j' [-u all]
+   squeue -h -r -o '%F|%j' [--me]
    ```
 
    `-r` prints one line per array element so no compressed expressions
    appear; `%F` is the array parent ID (or the job ID for non-arrays).
    Lines whose name starts with `"<prefix>-"` are kept and their IDs
-   de-duplicated. Without `-u all`, squeue shows the invoking user's jobs,
-   matching `poll_all_users=False`.
+   de-duplicated. squeue lists all users by default; `--me` (in the 22.05
+   man page) restricts it to the invoking user when `poll_all_users` is
+   false.
 2. **Fetch full rows** for those IDs with the ordinary polling query
-   (`sacct ... --array -j <ids>`). Because this query is unfiltered by
+   (`sacct ... -j <ids>`). Because this query is unfiltered by
    state, finished elements of a partially complete array come back too, so
    `array_range` is reconstructed from the full extent and
    `completed_elements` / `failed_element_indices` are correct from the
@@ -260,14 +265,14 @@ Raises `ClusterAPIError` when no `job_name_prefix` is configured. Returns
 - sacct parsing on literal sample output: single job RUNNING/COMPLETED/
   FAILED/`CANCELLED by 1234`/TIMEOUT/OUT_OF_MEMORY/PREEMPTED; exit codes
   `1:0` → 1, `0:9` → -9, `0:0` → 0, asserted on the resulting `JobRecord`
-  and `ArrayElement`; array rows `123_0`…`123_4`; a compressed `123_[3-5]`
-  row logged and skipped; step rows skipped; `None assigned`; `Unknown`
-  times; empty output.
+  and `ArrayElement`; array rows `123_0`…`123_4`; compressed
+  `123_[3-5,8%2]` and `123_[0-10:2]` rows expanded; step rows skipped;
+  `None assigned`; `Unknown` times; empty output.
 - State map: every listed SLURM state maps as in the table; unknown state →
   UNKNOWN with a warning.
-- Status args: `-j` list of only non-terminal IDs, `--array` present,
-  `--allusers` when `poll_all_users`, `SLURM_TIME_FORMAT=standard` in the
-  call environment.
+- Status args: `-j` list of only non-terminal IDs, `--allusers` when
+  `poll_all_users`; `SLURM_TIME_FORMAT=standard` and `SLURM_BITSTR_LEN=0`
+  in the call environment.
 - Cancel: `scancel ID`; `cancel_by_name` exact name, no-match swallowed.
 - Reconnect: squeue discovery args, prefix filtering, de-duplication of
   array parents, sacct fetch of discovered IDs, partially completed array
