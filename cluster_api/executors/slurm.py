@@ -8,8 +8,10 @@ import logging
 import math
 import re
 import shlex
+from datetime import datetime, timezone
+from typing import Any
 
-from .._types import ResourceSpec
+from .._types import JobStatus, ResourceSpec
 from ..config import ClusterConfig, parse_memory_bytes
 from ..core import Executor
 from ..exceptions import SubmitError
@@ -21,7 +23,54 @@ logger = logging.getLogger(__name__)
 # and print full array task expressions instead of truncating at 64 bytes.
 _SLURM_ENV = {"SLURM_TIME_FORMAT": "standard", "SLURM_BITSTR_LEN": "0"}
 
+# https://slurm.schedmd.com/job_state_codes.html; Nextflow's STATUS_MAP agrees
+# on every state it covers. PREEMPTED is terminal because every job is
+# submitted with --no-requeue.
+_SLURM_STATUS_MAP: dict[str, JobStatus] = {
+    "PENDING": JobStatus.PENDING,
+    "CONFIGURING": JobStatus.PENDING,
+    "REQUEUED": JobStatus.PENDING,
+    "REQUEUE_HOLD": JobStatus.PENDING,
+    "REQUEUE_FED": JobStatus.PENDING,
+    "RESV_DEL_HOLD": JobStatus.PENDING,
+    "SPECIAL_EXIT": JobStatus.PENDING,
+    "RUNNING": JobStatus.RUNNING,
+    "COMPLETING": JobStatus.RUNNING,
+    "SUSPENDED": JobStatus.RUNNING,
+    "STOPPED": JobStatus.RUNNING,
+    "SIGNALING": JobStatus.RUNNING,
+    "STAGE_OUT": JobStatus.RUNNING,
+    "RESIZING": JobStatus.RUNNING,
+    "COMPLETED": JobStatus.DONE,
+    "FAILED": JobStatus.FAILED,
+    "BOOT_FAIL": JobStatus.FAILED,
+    "NODE_FAIL": JobStatus.FAILED,
+    "OUT_OF_MEMORY": JobStatus.FAILED,
+    "TIMEOUT": JobStatus.FAILED,
+    "DEADLINE": JobStatus.FAILED,
+    "REVOKED": JobStatus.FAILED,
+    "CANCELLED": JobStatus.KILLED,
+    "PREEMPTED": JobStatus.KILLED,
+}
+
+_SACCT_FIELDS = "JobID,JobName,State,ExitCode,NodeList,Submit,Start,End"
+_SACCT_FIELD_COUNT = 8
+
+# sacct JobID forms: "123", "123_4", and for not-yet-split pending array
+# tasks "123_[0-5,8%4]" (throttle suffix optional).
+_ARRAY_TASK_RE = re.compile(r"^(?P<parent>\d+)_(?P<index>\d+)$")
+_ARRAY_RANGE_RE = re.compile(r"^(?P<parent>\d+)_\[(?P<expr>[\d,\-:]+)(?:%\d+)?\]$")
+
 _SHELL_SHEBANG_RE = re.compile(r"^#!\s*(/\S*/)?(ba|z|k)?sh$")
+
+
+def slurm_format_mem(n_bytes: int) -> str:
+    """Format bytes as an sbatch ``--mem`` value in MiB, rounding up.
+
+    dask-jobqueue's ``slurm_format_bytes_ceil`` picks the largest exact
+    unit; SLURM's default unit is MiB so we always emit ``<n>M``.
+    """
+    return f"{max(1, math.ceil(n_bytes / 1024**2))}M"
 
 
 def _login_shebang(shebang: str) -> str:
@@ -44,13 +93,77 @@ def _login_shebang(shebang: str) -> str:
     return shebang
 
 
-def slurm_format_mem(n_bytes: int) -> str:
-    """Format bytes as an sbatch ``--mem`` value in MiB, rounding up.
+def expand_array_expr(expr: str) -> list[int]:
+    """Expand a SLURM task expression like ``"0-5,8,10-20:5"`` into indices."""
+    indices: list[int] = []
+    for part in expr.split(","):
+        if not part:
+            continue
+        step = 1
+        if ":" in part:
+            part, step_str = part.split(":", 1)
+            step = int(step_str)
+        if "-" in part:
+            lo, hi = part.split("-", 1)
+            indices.extend(range(int(lo), int(hi) + 1, step))
+        else:
+            indices.append(int(part))
+    return indices
 
-    dask-jobqueue's ``slurm_format_bytes_ceil`` picks the largest exact
-    unit; SLURM's default unit is MiB so we always emit ``<n>M``.
+
+def _expand_job_id(job_id: str) -> list[str]:
+    """Translate a sacct JobID into base-class keys (``"123"``, ``"123[4]"``)."""
+    if job_id.isdigit():
+        return [job_id]
+    m = _ARRAY_TASK_RE.match(job_id)
+    if m:
+        return [f"{m.group('parent')}[{m.group('index')}]"]
+    m = _ARRAY_RANGE_RE.match(job_id)
+    if m:
+        parent = m.group("parent")
+        return [f"{parent}[{i}]" for i in expand_array_expr(m.group("expr"))]
+    logger.warning("Unrecognised sacct JobID %r; skipping", job_id)
+    return []
+
+
+def _clean_field(value: str | None) -> str | None:
+    """Return None for sacct's empty / placeholder values."""
+    if value is None:
+        return None
+    s = value.strip()
+    if s in ("", "None", "None assigned", "Unknown"):
+        return None
+    return s
+
+
+def _parse_exit_code(raw: str) -> int | None:
+    """Parse sacct ``ExitCode`` (``rc:sig``).
+
+    Returns ``rc`` normally, or ``-sig`` when a signal terminated the job,
+    matching the negative return codes ``subprocess`` reports for the local
+    executor.
     """
-    return f"{max(1, math.ceil(n_bytes / 1024**2))}M"
+    s = raw.strip()
+    if ":" not in s:
+        return None
+    rc_str, sig_str = s.split(":", 1)
+    try:
+        rc, sig = int(rc_str), int(sig_str)
+    except ValueError:
+        return None
+    return -sig if sig else rc
+
+
+def _parse_slurm_time(raw: str) -> datetime | None:
+    """Parse ``YYYY-MM-DDTHH:MM:SS`` (SLURM_TIME_FORMAT=standard, local time) to UTC."""
+    s = _clean_field(raw)
+    if s is None:
+        return None
+    try:
+        naive_local = datetime.strptime(s, "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+    return naive_local.astimezone(timezone.utc)
 
 
 class SlurmExecutor(Executor):
@@ -256,11 +369,61 @@ class SlurmExecutor(Executor):
         )
         return self._job_id_from_submit_output(out), script_path
 
-    # Abstract-method stubs so the class is instantiable; replaced by the
-    # real implementations in the status-polling task.
+    # --- Status polling ---
 
-    def _build_status_args(self):  # pragma: no cover
-        raise NotImplementedError
+    def _sacct_args(self, job_ids: list[str]) -> list[str]:
+        """sacct query for explicit job IDs; shared by poll() and reconnect().
 
-    def _parse_job_statuses(self, output):  # pragma: no cover
-        raise NotImplementedError
+        ``-n`` no header, ``-P`` pipe-delimited, ``-X`` allocation rows only.
+        With ``-j`` the time window defaults to epoch 0 (sacct man page).
+        """
+        args = [self.status_command, "-n", "-P", "-X"]
+        if self.config.poll_all_users:
+            args.append("--allusers")
+        args.extend(["-j", ",".join(job_ids), "-o", _SACCT_FIELDS])
+        return args
+
+    def _build_status_args(self) -> list[str]:
+        active_ids = [jid for jid, r in self._jobs.items() if not r.is_terminal]
+        return self._sacct_args(active_ids)
+
+    def _parse_job_statuses(
+        self, output: str
+    ) -> dict[str, tuple[JobStatus, dict[str, Any]]]:
+        """Parse ``sacct -n -P -X`` rows into status + metadata dicts."""
+        result: dict[str, tuple[JobStatus, dict[str, Any]]] = {}
+        for line in output.splitlines():
+            if not line.strip():
+                continue
+            fields = line.split("|")
+            if len(fields) < _SACCT_FIELD_COUNT:
+                logger.warning("Unexpected sacct line (expected %d fields): %r",
+                               _SACCT_FIELD_COUNT, line)
+                continue
+            job_id, job_name, state_raw, exit_raw, nodelist, submit, start, end = fields[:8]
+            job_id = job_id.strip()
+            if "." in job_id:
+                continue  # step row (123.batch, 123.0)
+
+            # "CANCELLED by 1234" -> "CANCELLED"
+            state_tok = state_raw.split()[0] if state_raw.split() else ""
+            status = _SLURM_STATUS_MAP.get(state_tok)
+            if status is None:
+                logger.warning("Unmapped SLURM state %r for job %s", state_raw, job_id)
+                status = JobStatus.UNKNOWN
+
+            exit_code = _parse_exit_code(exit_raw)
+            if exit_code is None and status == JobStatus.DONE:
+                exit_code = 0
+
+            meta: dict[str, Any] = {
+                "exec_host": _clean_field(nodelist),
+                "exit_code": exit_code,
+                "submit_time": _parse_slurm_time(submit),
+                "start_time": _parse_slurm_time(start),
+                "finish_time": _parse_slurm_time(end),
+                "job_name": _clean_field(job_name),
+            }
+            for key in _expand_job_id(job_id):
+                result[key] = (status, dict(meta))
+        return result
