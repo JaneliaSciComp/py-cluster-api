@@ -263,12 +263,19 @@ class TestReconnect:
                                            resources=ResourceSpec(cpus=1, work_dir=work_dir,
                                                                   extra_args=["--hold"]))
         try:
-            # wait until element 1 has finished and element 2 is running
+            # Wait until the array is partially complete: at least one element
+            # DONE while the array as a whole is still running. Elements 2 and
+            # 3 each hold the CPU for 90 s, so this state lasts ~3 minutes.
+            last = None
             for _ in range(60):
                 await slurm_executor.poll()
                 elems = arr.array_elements
-                if (elems.get(1) and elems[1].status == JobStatus.DONE
-                        and elems.get(2) and elems[2].status == JobStatus.RUNNING):
+                snapshot = {i: e.status.value for i, e in sorted(elems.items())}
+                if snapshot != last:
+                    print(f"poll: array {arr.job_id} status={arr.status.value} elements={snapshot}")
+                    last = snapshot
+                if (any(e.status == JobStatus.DONE for e in elems.values())
+                        and arr.status == JobStatus.RUNNING):
                     break
                 await asyncio.sleep(2)
             else:
@@ -285,9 +292,12 @@ class TestReconnect:
             rec_arr = by_id[arr.job_id]
             assert rec_arr.is_array
             assert rec_arr.metadata["array_range"] == (1, 3)
-            assert rec_arr.array_elements[1].status == JobStatus.DONE
-            assert rec_arr.array_elements[1].exit_code == 0
-            assert rec_arr.array_elements[2].status == JobStatus.RUNNING
+            print(f"reconnected array: status={rec_arr.status.value} "
+                  f"elements={ {i: e.status.value for i, e in sorted(rec_arr.array_elements.items())} }")
+            assert sorted(rec_arr.array_elements) == [1, 2, 3]
+            done = [e for e in rec_arr.array_elements.values() if e.status == JobStatus.DONE]
+            assert done and all(e.exit_code == 0 for e in done)
+            assert rec_arr.completed_elements < rec_arr.element_count
             assert rec_arr.status == JobStatus.RUNNING
         finally:
             await slurm_executor.cancel_all()
