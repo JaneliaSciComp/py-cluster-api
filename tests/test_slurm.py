@@ -349,6 +349,21 @@ class TestHelpers:
             assert _expand_job_id("123+1") == []
         assert "123+1" in caplog.text
 
+    def test_expand_job_id_malformed_range_skipped(self, caplog):
+        """A regex-valid but unparseable range must warn and skip, never raise."""
+        with caplog.at_level("WARNING"):
+            assert _expand_job_id("123_[0-]") == []
+            assert _expand_job_id("123_[0:]") == []
+        assert "123_[0-]" in caplog.text
+
+    def test_parse_malformed_range_row_does_not_lose_other_rows(self, slurm_config):
+        executor = SlurmExecutor(slurm_config)
+        output = "\n".join([
+            _row("123_[0-]", state="PENDING", nodelist="None assigned", start="Unknown"),
+            _row("124"),
+        ])
+        assert list(executor._parse_job_statuses(output)) == ["124"]
+
     def test_parse_exit_code(self):
         assert _parse_exit_code("0:0") == 0
         assert _parse_exit_code("1:0") == 1

@@ -121,7 +121,10 @@ def _expand_job_id(job_id: str) -> list[str]:
     m = _ARRAY_RANGE_RE.match(job_id)
     if m:
         parent = m.group("parent")
-        return [f"{parent}[{i}]" for i in expand_array_expr(m.group("expr"))]
+        try:
+            return [f"{parent}[{i}]" for i in expand_array_expr(m.group("expr"))]
+        except ValueError:
+            pass  # malformed expression such as "0-" or "0:"; fall through
     logger.warning("Unrecognised sacct JobID %r; skipping", job_id)
     return []
 
