@@ -412,9 +412,13 @@ class SlurmExecutor(Executor):
                 logger.warning("Unmapped SLURM state %r for job %s", state_raw, job_id)
                 status = JobStatus.UNKNOWN
 
-            exit_code = _parse_exit_code(exit_raw)
-            if exit_code is None and status == JobStatus.DONE:
-                exit_code = 0
+            # sacct prints "0:0" for jobs that have not finished; only a
+            # terminal state carries a meaningful exit code.
+            exit_code = None
+            if status in _TERMINAL_STATUSES:
+                exit_code = _parse_exit_code(exit_raw)
+                if exit_code is None and status == JobStatus.DONE:
+                    exit_code = 0
 
             meta: dict[str, Any] = {
                 "exec_host": _clean_field(nodelist),

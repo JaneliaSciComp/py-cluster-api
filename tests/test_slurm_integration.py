@@ -248,23 +248,37 @@ class TestEnvironment:
 class TestReconnect:
 
     async def test_reconnect_finds_running_held_and_partial_array(self, slurm_executor, work_dir):
-        running = await slurm_executor.submit(command="sleep 90", name="rc-run",
-                                              resources=ResourceSpec(cpus=1, work_dir=work_dir))
-        held = await slurm_executor.submit(command="echo held", name="rc-held",
-                                           resources=ResourceSpec(cpus=1, work_dir=work_dir,
-                                                                  extra_args=["--hold"]))
+        # The array goes first: on a one-CPU node (as in CI) a long-running
+        # single job submitted earlier would starve it, and the point of the
+        # test is a partially completed array. Element 1 exits immediately,
+        # element 2 then holds the CPU; the single job may stay PENDING.
         arr = await slurm_executor.submit_array(
             command='[ "$SLURM_ARRAY_TASK_ID" = 1 ] && exit 0; sleep 90', name="rc-arr",
             array_range=(1, 3), max_concurrent=1,
             resources=ResourceSpec(cpus=1, work_dir=work_dir),
         )
+        queued = await slurm_executor.submit(command="sleep 90", name="rc-run",
+                                             resources=ResourceSpec(cpus=1, work_dir=work_dir))
+        held = await slurm_executor.submit(command="echo held", name="rc-held",
+                                           resources=ResourceSpec(cpus=1, work_dir=work_dir,
+                                                                  extra_args=["--hold"]))
         try:
-            # let element 1 finish and element 2 start
-            await asyncio.sleep(15)
+            # wait until element 1 has finished and element 2 is running
+            for _ in range(60):
+                await slurm_executor.poll()
+                elems = arr.array_elements
+                if (elems.get(1) and elems[1].status == JobStatus.DONE
+                        and elems.get(2) and elems[2].status == JobStatus.RUNNING):
+                    break
+                await asyncio.sleep(2)
+            else:
+                pytest.fail(f"array never reached the partial state: {arr.array_elements}")
+
             fresh = _make_executor()
             recovered = await fresh.reconnect()
             by_id = {r.job_id: r for r in recovered}
-            assert running.job_id in by_id
+            assert queued.job_id in by_id
+            assert by_id[queued.job_id].status in (JobStatus.PENDING, JobStatus.RUNNING)
             assert held.job_id in by_id
             assert by_id[held.job_id].status == JobStatus.PENDING
             assert arr.job_id in by_id
@@ -272,6 +286,8 @@ class TestReconnect:
             assert rec_arr.is_array
             assert rec_arr.metadata["array_range"] == (1, 3)
             assert rec_arr.array_elements[1].status == JobStatus.DONE
+            assert rec_arr.array_elements[1].exit_code == 0
+            assert rec_arr.array_elements[2].status == JobStatus.RUNNING
             assert rec_arr.status == JobStatus.RUNNING
         finally:
             await slurm_executor.cancel_all()

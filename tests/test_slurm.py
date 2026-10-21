@@ -392,7 +392,8 @@ class TestParseJobStatuses:
         status, meta = result["123"]
         assert status == JobStatus.RUNNING
         assert meta["exec_host"] == "node01"
-        assert meta["exit_code"] == 0
+        # sacct prints "0:0" for jobs that have not finished; that is not an exit code
+        assert meta["exit_code"] is None
         assert meta["job_name"] == "test-j"
         assert meta["start_time"] is not None
         assert meta["finish_time"] is None
@@ -443,6 +444,7 @@ class TestParseJobStatuses:
             _row("9", state="PENDING", nodelist="None assigned", start="Unknown"))
         assert result["9"][1]["exec_host"] is None
         assert result["9"][1]["start_time"] is None
+        assert result["9"][1]["exit_code"] is None
 
     def test_array_rows(self, slurm_config):
         executor = SlurmExecutor(slurm_config)
