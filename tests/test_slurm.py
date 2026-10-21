@@ -9,7 +9,7 @@ import pytest
 
 from cluster_api._types import JobStatus, ResourceSpec
 from cluster_api.config import ClusterConfig
-from cluster_api.exceptions import SubmitError
+from cluster_api.exceptions import CommandFailedError, SubmitError
 from cluster_api.executors import get_executor_class
 from cluster_api.executors.slurm import (
     _SACCT_FIELDS,
@@ -501,3 +501,65 @@ class TestPollEndToEnd:
         assert arr.status == JobStatus.DONE
         assert arr.array_elements[0].exit_code == 0
         assert arr.array_elements[1].status == JobStatus.DONE
+
+
+class TestCancel:
+
+    async def test_cancel(self, slurm_config, work_dir):
+        executor = SlurmExecutor(slurm_config)
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value="123"):
+            job = await executor.submit(command="sleep 60", name="c",
+                                        resources=ResourceSpec(work_dir=work_dir))
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value="") as mock_call:
+            await executor.cancel(job.job_id)
+        assert mock_call.call_args[0][0] == ["scancel", "123"]
+        assert job.status == JobStatus.KILLED
+
+    async def test_cancel_done_has_no_extra_flag(self, slurm_config, work_dir):
+        """SLURM has no bkill -d equivalent; the record is still marked DONE."""
+        executor = SlurmExecutor(slurm_config)
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value="123"):
+            job = await executor.submit(command="sleep 60", name="c",
+                                        resources=ResourceSpec(work_dir=work_dir))
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value="") as mock_call:
+            await executor.cancel(job.job_id, done=True)
+        assert mock_call.call_args[0][0] == ["scancel", "123"]
+        assert job.status == JobStatus.DONE
+
+    async def test_cancel_by_name(self, slurm_config, work_dir):
+        executor = SlurmExecutor(slurm_config)
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value="1"):
+            a = await executor.submit(command="sleep 60", name="alpha",
+                                      resources=ResourceSpec(work_dir=work_dir))
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value="2"):
+            b = await executor.submit(command="sleep 60", name="beta",
+                                      resources=ResourceSpec(work_dir=work_dir))
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value="") as mock_call:
+            await executor.cancel_by_name("test-alpha")
+        assert mock_call.call_args[0][0] == ["scancel", "--name=test-alpha"]
+        assert a.status == JobStatus.KILLED
+        assert b.status == JobStatus.PENDING
+
+    async def test_cancel_by_name_glob_warns(self, slurm_config, caplog):
+        executor = SlurmExecutor(slurm_config)
+        with patch.object(executor, "_call", new_callable=AsyncMock, return_value="") as mock_call:
+            with caplog.at_level("WARNING"):
+                await executor.cancel_by_name("test-*")
+        assert mock_call.call_args[0][0] == ["scancel", "--name=test-*"]
+        assert "exact" in caplog.text
+
+    async def test_cancel_by_name_no_match_swallowed(self, slurm_config):
+        executor = SlurmExecutor(slurm_config)
+        err = CommandFailedError(
+            "Command failed (exit 1): scancel\nstderr: scancel: error: No active jobs match ALL job filters",
+            stdout="",
+        )
+        with patch.object(executor, "_call", new_callable=AsyncMock, side_effect=err):
+            await executor.cancel_by_name("nothing")  # must not raise
+
+    async def test_cancel_by_name_other_error_raises(self, slurm_config):
+        executor = SlurmExecutor(slurm_config)
+        err = CommandFailedError("Command failed (exit 1): scancel\nstderr: Access denied", stdout="")
+        with patch.object(executor, "_call", new_callable=AsyncMock, side_effect=err):
+            with pytest.raises(CommandFailedError):
+                await executor.cancel_by_name("x")

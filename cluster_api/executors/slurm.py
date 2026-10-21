@@ -14,7 +14,7 @@ from typing import Any
 from .._types import JobStatus, ResourceSpec
 from ..config import ClusterConfig, parse_memory_bytes
 from ..core import Executor
-from ..exceptions import SubmitError
+from ..exceptions import CommandFailedError, SubmitError
 from ..script import render_script, write_script
 
 logger = logging.getLogger(__name__)
@@ -427,3 +427,35 @@ class SlurmExecutor(Executor):
             for key in _expand_job_id(job_id):
                 result[key] = (status, dict(meta))
         return result
+
+    # --- Cancellation ---
+
+    async def _cancel_job(self, job_id: str, *, done: bool = False) -> None:
+        """Run scancel. *done* has no SLURM equivalent (no ``bkill -d``);
+        the base class still marks the record DONE in-process."""
+        await self._call([self.cancel_command, job_id], timeout=self.config.command_timeout)
+
+    async def cancel_by_name(self, name_pattern: str) -> None:
+        """Cancel jobs with exactly this name via ``scancel --name``.
+
+        scancel documents no wildcard matching, so unlike LSF's ``bkill -J``
+        the argument is an exact job name.
+        """
+        if any(ch in name_pattern for ch in "*?["):
+            logger.warning(
+                "cancel_by_name(%r): SLURM matches exact job names only; "
+                "glob characters are passed through literally", name_pattern,
+            )
+        cmd = [self.cancel_command, f"--name={name_pattern}"]
+        try:
+            await self._call(cmd, timeout=self.config.command_timeout)
+        except CommandFailedError as e:
+            # scancel: "No active jobs match ALL job filters"
+            if "match" in str(e).lower():
+                logger.debug("No jobs matched name %s", name_pattern)
+                return
+            raise
+        for record in self._jobs.values():
+            if not record.is_terminal and record.name == name_pattern:
+                record.status = JobStatus.KILLED
+        logger.info("Cancelled jobs named %s", name_pattern)
