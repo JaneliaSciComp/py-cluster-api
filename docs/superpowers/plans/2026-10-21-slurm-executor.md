@@ -767,7 +767,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: base `Executor.poll()` which calls `_build_status_args()` then `_parse_job_statuses(out)` and routes `"123[4]"` keys to `array_elements`.
 - Produces:
-  - `_SLURM_STATUS_MAP: dict[str, JobStatus]` (replaces Task 1 placeholder).
+  - `_SLURM_STATUS_MAP: dict[str, JobStatus]`.
   - `_SACCT_FIELDS = "JobID,JobName,State,ExitCode,NodeList,Submit,Start,End"`.
   - `expand_array_expr(expr: str) -> list[int]`.
   - `_expand_job_id(job_id: str) -> list[str]` returning base-class keys (`"123"`, `"123[4]"`, ...) or `[]` when unparseable.
