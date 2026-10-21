@@ -31,3 +31,37 @@ jobs:
 
     - name: Test
       run: pixi run test
+
+  slurm-integration:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - "8888:3306"
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up SLURM (single node with slurmdbd accounting)
+      uses: koesterlab/setup-slurm-action@v1
+
+    - name: Set up Pixi
+      uses: prefix-dev/setup-pixi@v0.9.0
+      with:
+        pixi-version: v0.70.2
+        cache: true
+
+    - name: Smoke-test scheduler and accounting
+      run: |
+        sinfo
+        sacct -n -X -j 1 -o JobID
+
+    - name: SLURM integration tests
+      env:
+        CLUSTER_API_REQUIRE_SLURM: "1"
+      run: pixi run test-integration
